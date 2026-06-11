@@ -5,9 +5,10 @@ import tempfile
 import tkinter as tk
 from tkinter import messagebox, scrolledtext, ttk
 
-os.environ.setdefault(
-    "MPLCONFIGDIR", os.path.join(tempfile.gettempdir(), "gr_calculator_matplotlib")
-)
+FONT_CACHE_DIR = os.path.join(tempfile.gettempdir(), "gr_calculator_matplotlib")
+os.makedirs(FONT_CACHE_DIR, exist_ok=True)
+os.environ.setdefault("MPLCONFIGDIR", FONT_CACHE_DIR)
+os.environ.setdefault("XDG_CACHE_HOME", FONT_CACHE_DIR)
 
 import matplotlib
 
@@ -94,6 +95,243 @@ EXAMPLES = {
         ),
     },
 }
+
+
+def latex_symbol(symbol):
+    if symbol == "Γ":
+        return r"\Gamma"
+    return symbol
+
+
+def latex_expression(expr):
+    try:
+        return sp.latex(sp.simplify(expr))
+    except Exception:
+        return sp.latex(expr)
+
+
+def render_latex_to_pil(latex, font_size=17, dpi=160):
+    fig = Figure(figsize=(1, 0.35), dpi=dpi)
+    fig.patch.set_facecolor("white")
+    canvas = FigureCanvasAgg(fig)
+    fig.text(0, 0, f"${latex}$", fontsize=font_size, color="#111111")
+
+    buffer = io.BytesIO()
+    fig.savefig(
+        buffer,
+        format="png",
+        dpi=dpi,
+        bbox_inches="tight",
+        pad_inches=0.08,
+        facecolor="white",
+    )
+    buffer.seek(0)
+    return Image.open(buffer).copy()
+
+
+class FormulaOutput(ttk.Frame):
+    """Scrollable container for rendered formulas and short text notes."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.images = []
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(0, weight=1)
+
+        self.canvas = tk.Canvas(self, bg="white", highlightthickness=0)
+        self.v_scroll = ttk.Scrollbar(
+            self, orient="vertical", command=self.canvas.yview
+        )
+        self.h_scroll = ttk.Scrollbar(
+            self, orient="horizontal", command=self.canvas.xview
+        )
+        self.canvas.configure(
+            yscrollcommand=self.v_scroll.set,
+            xscrollcommand=self.h_scroll.set,
+        )
+
+        self.content = tk.Frame(self.canvas, bg="white")
+        self.window_id = self.canvas.create_window(
+            (0, 0), window=self.content, anchor="nw"
+        )
+        self.content.bind("<Configure>", self.update_scroll_region)
+        self.canvas.bind("<Enter>", self.bind_mousewheel)
+        self.canvas.bind("<Leave>", self.unbind_mousewheel)
+
+        self.canvas.grid(row=0, column=0, sticky="nsew")
+        self.v_scroll.grid(row=0, column=1, sticky="ns")
+        self.h_scroll.grid(row=1, column=0, sticky="ew")
+
+    def bind_mousewheel(self, _event):
+        self.canvas.bind_all("<MouseWheel>", self.on_mousewheel)
+        self.canvas.bind_all("<Button-4>", self.on_linux_scroll_up)
+        self.canvas.bind_all("<Button-5>", self.on_linux_scroll_down)
+
+    def unbind_mousewheel(self, _event):
+        self.canvas.unbind_all("<MouseWheel>")
+        self.canvas.unbind_all("<Button-4>")
+        self.canvas.unbind_all("<Button-5>")
+
+    def on_mousewheel(self, event):
+        direction = -1 if event.delta > 0 else 1
+        self.canvas.yview_scroll(direction * 3, "units")
+
+    def on_linux_scroll_up(self, _event):
+        self.canvas.yview_scroll(-3, "units")
+
+    def on_linux_scroll_down(self, _event):
+        self.canvas.yview_scroll(3, "units")
+
+    def update_scroll_region(self, _event=None):
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+
+    def clear(self):
+        for child in self.content.winfo_children():
+            child.destroy()
+        self.images.clear()
+        self.canvas.xview_moveto(0)
+        self.canvas.yview_moveto(0)
+        self.update_scroll_region()
+
+    def add_heading(self, text):
+        label = tk.Label(
+            self.content,
+            text=text,
+            bg="white",
+            fg="#111111",
+            anchor="w",
+            justify="left",
+            font=("TkDefaultFont", 12, "bold"),
+        )
+        label.pack(anchor="w", fill="x", padx=12, pady=(12, 4))
+
+    def add_text(self, text):
+        label = tk.Label(
+            self.content,
+            text=text,
+            bg="white",
+            fg="#333333",
+            anchor="w",
+            justify="left",
+            font=("TkDefaultFont", 10),
+        )
+        label.pack(anchor="w", fill="x", padx=12, pady=2)
+
+    def add_formula(self, latex, fallback=None):
+        try:
+            image = render_latex_to_pil(latex)
+            photo = ImageTk.PhotoImage(image)
+            self.images.append(photo)
+            label = tk.Label(self.content, image=photo, bg="white")
+        except Exception:
+            label = tk.Label(
+                self.content,
+                text=fallback or latex,
+                bg="white",
+                fg="#333333",
+                anchor="w",
+                justify="left",
+                font=("Menlo", 12),
+            )
+        label.pack(anchor="w", padx=18, pady=5)
+
+    def set_entries(self, entries):
+        self.clear()
+        if not entries:
+            self.add_text("无输出。")
+            return
+
+        for entry in entries:
+            kind = entry[0]
+            if kind == "heading":
+                self.add_heading(entry[1])
+            elif kind == "formula":
+                self.add_formula(entry[1], entry[2] if len(entry) > 2 else None)
+            else:
+                self.add_text(entry[1])
+        self.update_scroll_region()
+
+    def set_text(self, text):
+        self.set_entries([("text", text)])
+
+
+def tensor_render_entries(tensor, name="张量", symbol="T"):
+    if hasattr(tensor, "tensor"):
+        arr = tensor.tensor()
+    else:
+        arr = tensor
+
+    entries = []
+    display_symbol = latex_symbol(symbol)
+
+    if isinstance(arr, (sp.MutableDenseNDimArray, sp.ImmutableDenseNDimArray)):
+        shape = arr.shape
+        entries.append(("heading", f"{name}，形状 {shape}"))
+
+        if len(shape) == 2:
+            found = False
+            for i in range(shape[0]):
+                for j in range(shape[1]):
+                    value = sp.simplify(arr[i, j])
+                    if value != 0:
+                        latex = (
+                            rf"{display_symbol}_{{{i}{j}}}"
+                            rf" = {latex_expression(value)}"
+                        )
+                        entries.append(
+                            ("formula", latex, f"{symbol}_{i}{j} = {value}")
+                        )
+                        found = True
+            if not found:
+                entries.append(("text", "所有分量为零。"))
+        elif len(shape) == 3:
+            found = False
+            for k in range(shape[0]):
+                for i in range(shape[1]):
+                    for j in range(shape[2]):
+                        value = sp.simplify(arr[k, i, j])
+                        if value != 0:
+                            latex = (
+                                rf"{display_symbol}^{{{k}}}_{{{i}{j}}}"
+                                rf" = {latex_expression(value)}"
+                            )
+                            entries.append(
+                                ("formula", latex, f"{symbol}^{k}_{i}{j} = {value}")
+                            )
+                            found = True
+            if not found:
+                entries.append(("text", "所有分量为零。"))
+        elif len(shape) == 4:
+            found = False
+            for i in range(shape[0]):
+                for j in range(shape[1]):
+                    for k in range(shape[2]):
+                        for l in range(shape[3]):
+                            value = sp.simplify(arr[i, j, k, l])
+                            if value != 0:
+                                latex = (
+                                    rf"{display_symbol}^{{{i}}}_{{{j}{k}{l}}}"
+                                    rf" = {latex_expression(value)}"
+                                )
+                                entries.append(
+                                    (
+                                        "formula",
+                                        latex,
+                                        f"{symbol}^{i}_{j}{k}{l} = {value}",
+                                    )
+                                )
+                                found = True
+            if not found:
+                entries.append(("text", "所有分量为零。"))
+        else:
+            entries.append(("text", str(arr)))
+        return entries
+
+    if isinstance(arr, sp.Basic):
+        entries.append(("formula", rf"{display_symbol} = {latex_expression(arr)}"))
+    else:
+        entries.append(("text", str(arr)))
+    return entries
 
 
 def split_top_level_csv(text):
@@ -376,15 +614,11 @@ class GRCalculatorApp:
         self.notebook = ttk.Notebook(output_frame)
         self.notebook.pack(fill="both", expand=True)
 
-        self.tab_summary = scrolledtext.ScrolledText(self.notebook, wrap=tk.WORD)
-        self.tab_christoffel = scrolledtext.ScrolledText(
-            self.notebook, wrap=tk.WORD
-        )
-        self.tab_riemann = scrolledtext.ScrolledText(self.notebook, wrap=tk.WORD)
-        self.tab_ricci = scrolledtext.ScrolledText(self.notebook, wrap=tk.WORD)
-        self.tab_ricciscalar = scrolledtext.ScrolledText(
-            self.notebook, wrap=tk.WORD
-        )
+        self.tab_summary = FormulaOutput(self.notebook)
+        self.tab_christoffel = FormulaOutput(self.notebook)
+        self.tab_riemann = FormulaOutput(self.notebook)
+        self.tab_ricci = FormulaOutput(self.notebook)
+        self.tab_ricciscalar = FormulaOutput(self.notebook)
 
         self.notebook.add(self.tab_summary, text="输入摘要")
         self.notebook.add(self.tab_christoffel, text="克里斯托费尔联络")
@@ -417,8 +651,11 @@ class GRCalculatorApp:
         return parse_gr_inputs(coord_str, scalar_str, func_str, metric_str)
 
     def set_text(self, widget, text):
-        widget.delete("1.0", tk.END)
-        widget.insert("1.0", text)
+        if hasattr(widget, "set_text"):
+            widget.set_text(text)
+        else:
+            widget.delete("1.0", tk.END)
+            widget.insert("1.0", text)
 
     def clear_outputs(self):
         for widget in [
@@ -428,31 +665,66 @@ class GRCalculatorApp:
             self.tab_ricci,
             self.tab_ricciscalar,
         ]:
-            self.set_text(widget, "")
+            if hasattr(widget, "clear"):
+                widget.clear()
+            else:
+                self.set_text(widget, "")
 
     def format_summary(self, coords, scalar_symbols, function_defs, metric_mat):
-        scalar_text = ", ".join(str(symbol) for symbol in scalar_symbols) or "无"
-        function_text = (
-            ", ".join(
-                f"{name}({', '.join(args)})" for name, args in function_defs
+        entries = [("heading", "坐标")]
+        coord_latex = r"\left(" + ", ".join(sp.latex(coord) for coord in coords) + r"\right)"
+        entries.append(
+            (
+                "formula",
+                coord_latex,
+                "(" + ", ".join(str(coord) for coord in coords) + ")",
             )
-            or "无"
         )
-        lines = [
-            "坐标:",
-            "  " + ", ".join(str(coord) for coord in coords),
-            "",
-            "标量常量:",
-            "  " + scalar_text,
-            "",
-            "自定义函数:",
-            "  " + function_text,
-            "",
-            f"度规矩阵 ({metric_mat.rows} x {metric_mat.cols}):",
-        ]
-        for row in metric_mat.tolist():
-            lines.append("  " + str([sp.simplify(item) for item in row]))
-        return "\n".join(lines)
+
+        entries.append(("heading", "标量常量"))
+        if scalar_symbols:
+            entries.append(
+                (
+                    "formula",
+                    ", ".join(sp.latex(symbol) for symbol in scalar_symbols),
+                    ", ".join(str(symbol) for symbol in scalar_symbols),
+                )
+            )
+        else:
+            entries.append(("text", "无"))
+
+        entries.append(("heading", "自定义函数"))
+        if function_defs:
+            for name, args in function_defs:
+                arg_symbols = [sp.Symbol(arg) for arg in args]
+                function_expr = sp.Function(name)(*arg_symbols)
+                entries.append(
+                    (
+                        "formula",
+                        sp.latex(function_expr),
+                        f"{name}({', '.join(args)})",
+                    )
+                )
+        else:
+            entries.append(("text", "无"))
+
+        entries.append(("heading", f"度规矩阵 ({metric_mat.rows} x {metric_mat.cols})"))
+        found_metric_component = False
+        for i in range(metric_mat.rows):
+            for j in range(metric_mat.cols):
+                value = sp.simplify(metric_mat[i, j])
+                if value != 0:
+                    entries.append(
+                        (
+                            "formula",
+                            rf"g_{{{i}{j}}} = {latex_expression(value)}",
+                            f"g_{i}{j} = {value}",
+                        )
+                    )
+                    found_metric_component = True
+        if not found_metric_component:
+            entries.append(("text", "所有分量为零。"))
+        return entries
 
     def format_tensor(self, tensor, name="张量", symbol="T"):
         if hasattr(tensor, "tensor"):
@@ -514,9 +786,8 @@ class GRCalculatorApp:
 
         self.calc_btn.configure(state="disabled")
         self.clear_outputs()
-        self.set_text(
-            self.tab_summary,
-            self.format_summary(coords, scalar_symbols, function_defs, metric_mat),
+        self.tab_summary.set_entries(
+            self.format_summary(coords, scalar_symbols, function_defs, metric_mat)
         )
 
         try:
@@ -525,21 +796,19 @@ class GRCalculatorApp:
 
             self.set_status("正在计算克里斯托费尔联络...")
             ch = ChristoffelSymbols.from_metric(metric)
-            self.set_text(
-                self.tab_christoffel,
-                self.format_tensor(ch, "克里斯托费尔联络", "Γ"),
+            self.tab_christoffel.set_entries(
+                tensor_render_entries(ch, "克里斯托费尔联络", "Γ")
             )
 
             self.set_status("正在计算黎曼曲率张量...")
             rm = RiemannCurvatureTensor.from_christoffels(ch)
-            self.set_text(
-                self.tab_riemann,
-                self.format_tensor(rm, "黎曼曲率张量", "R"),
+            self.tab_riemann.set_entries(
+                tensor_render_entries(rm, "黎曼曲率张量", "R")
             )
 
             self.set_status("正在计算里奇张量...")
             rc = RicciTensor.from_riemann(rm)
-            self.set_text(self.tab_ricci, self.format_tensor(rc, "里奇张量", "R"))
+            self.tab_ricci.set_entries(tensor_render_entries(rc, "里奇张量", "R"))
 
             self.set_status("正在计算标量曲率...")
             try:
@@ -563,7 +832,16 @@ class GRCalculatorApp:
             else:
                 scalar_expr = sp.simplify(rs)
 
-            self.set_text(self.tab_ricciscalar, f"标量曲率 (R): {scalar_expr}")
+            self.tab_ricciscalar.set_entries(
+                [
+                    ("heading", "标量曲率"),
+                    (
+                        "formula",
+                        rf"R = {latex_expression(scalar_expr)}",
+                        f"R = {scalar_expr}",
+                    ),
+                ]
+            )
             self.set_status("计算完成")
         except Exception as exc:
             messagebox.showerror("计算错误", f"计算出错:\n{exc}")
