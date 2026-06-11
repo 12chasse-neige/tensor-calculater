@@ -8,16 +8,28 @@ EinsteinPy 计算度规对应的克里斯托费尔联络、黎曼曲率张量、
 
 项目环境保存在当前目录的 `.venv` 中，后续会继续保留。
 
+**Linux / macOS:**
 ```bash
 ./run_ui.sh
 ```
 
+**Windows:**
+```cmd
+run_ui.bat
+```
+
 如果需要重建环境：
 
+**Linux / macOS:**
 ```bash
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
-./run_ui.sh
+```
+
+**Windows:**
+```cmd
+python -m venv .venv
+.venv\Scripts\python -m pip install -r requirements.txt
 ```
 
 ## 输入格式
