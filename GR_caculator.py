@@ -40,6 +40,7 @@ from tensor_engine import (
     fast_simplify,
     latex_expression,
     parse_gr_inputs,
+    text_expression,
 )
 
 
@@ -298,7 +299,7 @@ def tensor_entries(tensor: TensorComponents) -> list[tuple[str, str] | tuple[str
     for key in sorted(tensor.components):
         value = tensor.components[key]
         latex = rf"{latex_component_label(tensor, key)} = {latex_expression(value)}"
-        fallback = f"{latex_component_label(tensor, key)} = {value}"
+        fallback = f"{latex_component_label(tensor, key)} = {text_expression(value)}"
         entries.append(("formula", latex, fallback))
     return entries
 
@@ -325,7 +326,7 @@ def matrix_component_entries(
                     (
                         "formula",
                         rf"{label} = {latex_expression(value)}",
-                        f"{label} = {value}",
+                        f"{label} = {text_expression(value)}",
                     )
                 )
                 found = True
@@ -667,8 +668,8 @@ class GRCalculatorApp:
                 entries.append(
                     (
                         "formula",
-                        sp.latex(function_expr),
-                        f"{name}({', '.join(args)})",
+                        latex_expression(function_expr),
+                        text_expression(function_expr),
                     )
                 )
         else:
@@ -710,7 +711,7 @@ class GRCalculatorApp:
             (
                 "formula",
                 rf"R = {latex_expression(result.ricci_scalar)}",
-                f"R = {result.ricci_scalar}",
+                f"R = {text_expression(result.ricci_scalar)}",
             )
         )
         entries.append(("heading", "Kretschmann 标量"))
@@ -724,7 +725,7 @@ class GRCalculatorApp:
                         r"R_{\mu\nu\rho\sigma}R^{\mu\nu\rho\sigma}"
                         rf" = {latex_expression(result.kretschmann)}"
                     ),
-                    f"K = {result.kretschmann}",
+                    f"K = {text_expression(result.kretschmann)}",
                 )
             )
         return entries

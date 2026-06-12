@@ -9,6 +9,7 @@ from typing import Callable
 import sympy as sp
 from sympy.core.function import AppliedUndef
 from sympy.printing.latex import LatexPrinter
+from sympy.printing.str import StrPrinter
 from sympy.parsing.sympy_parser import (
     convert_xor,
     implicit_multiplication_application,
@@ -457,6 +458,12 @@ def _is_time_symbol(symbol: sp.Basic) -> bool:
 
 
 class DotDerivativeLatexPrinter(LatexPrinter):
+    def _print_AppliedUndef(self, expr: AppliedUndef, exp: str | None = None) -> str:
+        name = self._print(sp.Symbol(expr.func.__name__))
+        if exp is not None:
+            return rf"{self.parenthesize_super(name)}^{{{exp}}}"
+        return name
+
     def _print_Derivative(self, expr: sp.Derivative) -> str:
         if len(expr.variable_count) == 1:
             variable, order = expr.variable_count[0]
@@ -469,8 +476,7 @@ class DotDerivativeLatexPrinter(LatexPrinter):
             name = self._print(sp.Symbol(expr.func.__name__))
             accent = r"\dot" if order == 1 else r"\ddot"
             dotted_name = rf"{accent}{{{name}}}"
-            args = ",".join(self._print(arg) for arg in expr.args)
-            return rf"{dotted_name}{{\left({args}\right)}}"
+            return dotted_name
 
         printed = self._print(expr)
         if order == 1:
@@ -481,11 +487,26 @@ class DotDerivativeLatexPrinter(LatexPrinter):
 DOT_DERIVATIVE_LATEX_PRINTER = DotDerivativeLatexPrinter()
 
 
+class CompactFunctionStrPrinter(StrPrinter):
+    def _print_AppliedUndef(self, expr: AppliedUndef, **_kwargs: object) -> str:
+        return expr.func.__name__
+
+
+COMPACT_FUNCTION_STR_PRINTER = CompactFunctionStrPrinter()
+
+
 def latex_expression(expr: sp.Expr) -> str:
     try:
         return DOT_DERIVATIVE_LATEX_PRINTER.doprint(fast_simplify(expr, deep=False))
     except Exception:
         return DOT_DERIVATIVE_LATEX_PRINTER.doprint(expr)
+
+
+def text_expression(expr: sp.Expr) -> str:
+    try:
+        return COMPACT_FUNCTION_STR_PRINTER.doprint(fast_simplify(expr, deep=False))
+    except Exception:
+        return COMPACT_FUNCTION_STR_PRINTER.doprint(expr)
 
 
 class TensorCalculator:
