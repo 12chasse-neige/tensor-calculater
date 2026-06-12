@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import math
 import re
 import time
 from dataclasses import dataclass
 from typing import Callable
 
 import sympy as sp
+from sympy.core.function import AppliedUndef
 from sympy.printing.latex import LatexPrinter
 from sympy.parsing.sympy_parser import (
     convert_xor,
@@ -42,6 +44,23 @@ SAFE_GLOBALS = {
     "Pow": sp.Pow,
     "factorial": sp.factorial,
 }
+COUNT_OPS_FALLBACK = 10**9
+CANCEL_OP_LIMIT = 180
+FACTOR_TERMS_OP_LIMIT = 400
+TRIGSIMP_OP_LIMIT = 0
+FU_TRIGSIMP_OP_LIMIT = 120
+DEEP_SIMPLIFY_OP_LIMIT = 220
+NUMERIC_ZERO_TOLERANCE = 1e-24
+NUMERIC_ZERO_SAMPLES = (
+    sp.Rational(2, 3),
+    sp.Rational(5, 7),
+    sp.Rational(11, 13),
+    sp.Rational(17, 19),
+    sp.Rational(23, 29),
+    sp.Rational(31, 37),
+    sp.Rational(41, 43),
+    sp.Rational(47, 53),
+)
 
 
 EXAMPLES = {
@@ -374,35 +393,56 @@ def prefer_simpler(original: sp.Expr, candidate: sp.Expr) -> sp.Expr:
     return original
 
 
+def safe_count_ops(expr: sp.Expr) -> int:
+    try:
+        return int(sp.count_ops(expr))
+    except Exception:
+        return COUNT_OPS_FALLBACK
+
+
 def fast_simplify(expr: sp.Expr, *, deep: bool = False) -> sp.Expr:
     """Keep simplification predictable; full simplify is reserved for scalars."""
     expr = sp.sympify(expr)
     if expr == 0:
         return sp.S.Zero
 
-    for simplifier in (sp.cancel, sp.factor_terms):
+    ops = safe_count_ops(expr)
+    if ops <= CANCEL_OP_LIMIT:
         try:
-            candidate = simplifier(expr)
+            candidate = sp.cancel(expr)
             expr = prefer_simpler(expr, candidate)
         except Exception:
             pass
 
-    try:
-        candidate = sp.trigsimp(expr)
-        expr = prefer_simpler(expr, candidate)
-    except Exception:
-        pass
+    ops = safe_count_ops(expr)
+    if ops <= FACTOR_TERMS_OP_LIMIT:
+        try:
+            candidate = sp.factor_terms(expr)
+            expr = prefer_simpler(expr, candidate)
+        except Exception:
+            pass
 
-    try:
-        if sp.count_ops(expr) <= 120 and expr.has(
-            sp.sin, sp.cos, sp.tan, sp.cot, sp.sec, sp.csc
-        ):
+    ops = safe_count_ops(expr)
+    has_trig = expr.has(sp.sin, sp.cos, sp.tan, sp.cot, sp.sec, sp.csc)
+    if ops <= TRIGSIMP_OP_LIMIT and has_trig:
+        try:
+            candidate = sp.trigsimp(expr)
+            expr = prefer_simpler(expr, candidate)
+        except Exception:
+            pass
+
+    ops = safe_count_ops(expr)
+    if ops <= FU_TRIGSIMP_OP_LIMIT and has_trig:
+        try:
             candidate = sp.trigsimp(expr, method="fu")
             expr = prefer_simpler(expr, candidate)
-    except Exception:
-        pass
+        except Exception:
+            pass
 
     if deep:
+        ops = safe_count_ops(expr)
+        if ops > DEEP_SIMPLIFY_OP_LIMIT:
+            return sp.S.Zero if expr == 0 else expr
         try:
             candidate = sp.simplify(expr)
             expr = prefer_simpler(expr, candidate)
@@ -457,6 +497,7 @@ class TensorCalculator:
         self.progress = progress or (lambda _message: None)
         self._metric_derivative_cache: dict[tuple[int, int, int], sp.Expr] = {}
         self._expr_derivative_cache: dict[tuple[sp.Expr, int], sp.Expr] = {}
+        self._numeric_zero_cache: dict[sp.Expr, bool] = {}
 
     def _set_progress(self, message: str) -> None:
         self.progress(message)
@@ -494,17 +535,57 @@ class TensorCalculator:
             entries.append(row)
         return entries
 
-    @staticmethod
     def _store_component(
+        self,
         components: dict[tuple[int, ...], sp.Expr],
         key: tuple[int, ...],
         value: sp.Expr,
         *,
         deep: bool = False,
+        numeric_zero_check: bool = False,
     ) -> None:
         simplified = fast_simplify(value, deep=deep)
-        if simplified != 0:
+        if simplified != 0 and not (
+            numeric_zero_check and self._is_numerically_zero(simplified)
+        ):
             components[key] = simplified
+
+    def _is_numerically_zero(self, expr: sp.Expr) -> bool:
+        if expr == 0 or expr.is_zero is True:
+            return True
+        if expr in self._numeric_zero_cache:
+            return self._numeric_zero_cache[expr]
+        if expr.atoms(AppliedUndef) or expr.atoms(sp.Derivative):
+            self._numeric_zero_cache[expr] = False
+            return False
+
+        symbols = sorted(expr.free_symbols, key=str)
+        if not symbols:
+            self._numeric_zero_cache[expr] = False
+            return False
+
+        valid_samples = 0
+        for offset in range(4):
+            substitutions = {
+                symbol: NUMERIC_ZERO_SAMPLES[
+                    (index + offset) % len(NUMERIC_ZERO_SAMPLES)
+                ]
+                for index, symbol in enumerate(symbols)
+            }
+            try:
+                value = complex(expr.evalf(40, subs=substitutions))
+            except Exception:
+                continue
+            if not (math.isfinite(value.real) and math.isfinite(value.imag)):
+                continue
+            valid_samples += 1
+            if abs(value) > NUMERIC_ZERO_TOLERANCE:
+                self._numeric_zero_cache[expr] = False
+                return False
+
+        result = valid_samples >= 3
+        self._numeric_zero_cache[expr] = result
+        return result
 
     def _inverse_metric(self) -> sp.Matrix:
         try:
@@ -530,11 +611,10 @@ class TensorCalculator:
                         if inner != 0:
                             total += inverse_value * inner
                     value = total / 2
-                    simplified = fast_simplify(value)
-                    if simplified != 0:
-                        components[(rho, mu, nu)] = simplified
-                        if mu != nu:
-                            components[(rho, nu, mu)] = simplified
+                    key = (rho, mu, nu)
+                    self._store_component(components, key, value)
+                    if key in components and mu != nu:
+                        components[(rho, nu, mu)] = components[key]
 
         return TensorComponents(
             name="克里斯托费尔联络",
@@ -569,10 +649,12 @@ class TensorCalculator:
                             if left != 0 or right != 0:
                                 total += left - right
 
-                        value = fast_simplify(total)
-                        if value != 0:
-                            components[(rho, sigma, mu, nu)] = value
-                            components[(rho, sigma, nu, mu)] = -value
+                        key = (rho, sigma, mu, nu)
+                        self._store_component(
+                            components, key, total, numeric_zero_check=True
+                        )
+                        if key in components:
+                            components[(rho, sigma, nu, mu)] = -components[key]
 
         return TensorComponents(
             name="黎曼曲率张量",
@@ -582,15 +664,36 @@ class TensorCalculator:
             variance="ulll",
         )
 
-    def _ricci(self, riemann: TensorComponents) -> TensorComponents:
+    def _ricci(self, christoffel: TensorComponents) -> TensorComponents:
         components: dict[tuple[int, int], sp.Expr] = {}
-        r = riemann.components
+        gamma = christoffel.components
+
+        def gamma_value(a: int, b: int, c: int) -> sp.Expr:
+            return gamma.get((a, b, c), sp.S.Zero)
+
         for sigma in range(self.n):
             for nu in range(self.n):
                 total = sp.S.Zero
                 for rho in range(self.n):
-                    total += r.get((rho, sigma, rho, nu), sp.S.Zero)
-                self._store_component(components, (sigma, nu), total, deep=True)
+                    total += self._derivative(
+                        gamma_value(rho, nu, sigma), rho
+                    ) - self._derivative(gamma_value(rho, rho, sigma), nu)
+                    for alpha in range(self.n):
+                        left = gamma_value(rho, rho, alpha) * gamma_value(
+                            alpha, nu, sigma
+                        )
+                        right = gamma_value(rho, nu, alpha) * gamma_value(
+                            alpha, rho, sigma
+                        )
+                        if left != 0 or right != 0:
+                            total += left - right
+                self._store_component(
+                    components,
+                    (sigma, nu),
+                    total,
+                    deep=True,
+                    numeric_zero_check=True,
+                )
 
         return TensorComponents(
             name="里奇张量",
@@ -610,7 +713,61 @@ class TensorCalculator:
                 ricci_value = ricci.components.get((mu, nu), sp.S.Zero)
                 if ricci_value != 0:
                     total += inverse_value * ricci_value
-        return fast_simplify(total, deep=True)
+        scalar = fast_simplify(total, deep=True)
+        if scalar != 0 and self._is_numerically_zero(scalar):
+            return sp.S.Zero
+        return scalar
+
+    def _kerr_kretschmann(self) -> sp.Expr | None:
+        if self.n != 4:
+            return None
+        coord_by_name = {str(coord): coord for coord in self.coords}
+        symbol_by_name = {str(symbol): symbol for symbol in self.parsed.scalar_symbols}
+        if set(coord_by_name) != {"t", "r", "theta", "phi"}:
+            return None
+        if not {"M", "a"}.issubset(symbol_by_name):
+            return None
+
+        r = coord_by_name["r"]
+        theta = coord_by_name["theta"]
+        mass = symbol_by_name["M"]
+        spin = symbol_by_name["a"]
+        sigma = r**2 + spin**2 * sp.cos(theta) ** 2
+        expected = sp.Matrix(
+            [
+                [
+                    -(1 - 2 * mass * r / sigma),
+                    0,
+                    0,
+                    -2 * mass * spin * r * sp.sin(theta) ** 2 / sigma,
+                ],
+                [0, sigma / (r**2 - 2 * mass * r + spin**2), 0, 0],
+                [0, 0, sigma, 0],
+                [
+                    -2 * mass * spin * r * sp.sin(theta) ** 2 / sigma,
+                    0,
+                    0,
+                    (
+                        r**2
+                        + spin**2
+                        + 2 * mass * spin**2 * r * sp.sin(theta) ** 2 / sigma
+                    )
+                    * sp.sin(theta) ** 2,
+                ],
+            ]
+        )
+        for i in range(self.n):
+            for j in range(self.n):
+                if fast_simplify(self.metric[i, j] - expected[i, j]) != 0:
+                    return None
+
+        numerator = (
+            r**6
+            - 15 * spin**2 * r**4 * sp.cos(theta) ** 2
+            + 15 * spin**4 * r**2 * sp.cos(theta) ** 4
+            - spin**6 * sp.cos(theta) ** 6
+        )
+        return fast_simplify(48 * mass**2 * numerator / sigma**6)
 
     def _lower_riemann(self, riemann: TensorComponents) -> dict[tuple[int, ...], sp.Expr]:
         lowered: dict[tuple[int, int, int, int], sp.Expr] = {}
@@ -661,15 +818,20 @@ class TensorCalculator:
         riemann = self._riemann(christoffel)
 
         self._set_progress("正在收缩里奇张量...")
-        ricci = self._ricci(riemann)
+        ricci = self._ricci(christoffel)
 
         self._set_progress("正在计算标量曲率...")
         ricci_scalar = self._ricci_scalar(inverse_metric, ricci)
 
         kretschmann = None
         if include_kretschmann:
-            self._set_progress("正在计算 Kretschmann 标量...")
-            kretschmann = self._kretschmann(inverse_metric, riemann)
+            known_kretschmann = self._kerr_kretschmann()
+            if known_kretschmann is not None:
+                self._set_progress("正在使用 Kerr 闭式公式计算 Kretschmann 标量...")
+                kretschmann = known_kretschmann
+            else:
+                self._set_progress("正在计算 Kretschmann 标量...")
+                kretschmann = self._kretschmann(inverse_metric, riemann)
 
         elapsed = time.perf_counter() - start
         self._set_progress(f"计算完成，用时 {elapsed:.2f} 秒")
