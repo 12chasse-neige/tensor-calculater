@@ -1,12 +1,13 @@
-# GR 曲率张量计算器
+# GR Tensor Calculator
 
-这是一个基于 Tkinter 的广义相对论符号计算 GUI，使用 SymPy 和
-EinsteinPy 计算度规对应的克里斯托费尔联络、黎曼曲率张量、里奇张量和标量曲率。
-计算结果会被转换为 LaTeX 公式并在 UI 中渲染显示，方便直接阅读张量分量。
+这是一个纯 Python / SymPy 的广义相对论符号计算 GUI。它可以从用户输入的度规计算
+非零的 Christoffel 联络、Riemann 张量、Ricci 张量、Ricci 标量和
+Kretschmann 标量，也可以把用户输入的几何作用量密度在
+`g_{\mu\nu}=\eta_{\mu\nu}+\epsilon h_{\mu\nu}` 下展开到二阶。
 
 ## 运行
 
-项目环境保存在当前目录的 `.venv` 中，后续会继续保留。
+项目环境保存在当前目录的 `.venv` 中：
 
 ```bash
 ./run_ui.sh
@@ -20,41 +21,59 @@ python3 -m venv .venv
 ./run_ui.sh
 ```
 
-## 输入格式
+## 曲率计算输入
 
 - 坐标符号：用逗号分隔，例如 `t, r, theta, phi`。
 - 标量常量：用逗号分隔，例如 `M, G, c`。
 - 自定义函数：写成坐标的函数，例如 `a(t)` 或 `Phi(t, r)`。
-- 度规矩阵：使用 Python/SymPy 风格的方阵列表。
+- 度规矩阵：每行输入一个矩阵行，例如 `[g00, g01, ...]`；旧的
+  `[[...], [...]]` 外层括号写法仍然兼容。
 
-表达式支持更接近手写公式的写法，例如 `2M/r`、`r^2`、`sin(theta)`、
+表达式支持接近手写公式的写法，例如 `2M/r`、`r^2`、`sin(theta)`、
 `sqrt(...)`、`diff(...)`、`Matrix(...)` 和 `diag(...)`。
 
-## 内置示例
-
-UI 中提供了三个示例：
+内置示例包括：
 
 - 球坐标下的平直时空
-- 含标量常量 `M` 的 Schwarzschild 度规
-- 含尺度因子 `a(t)` 和曲率参数 `k` 的 FLRW 度规
+- Schwarzschild 度规
+- Reissner-Nordstrom 度规
+- Kerr 度规（Boyer-Lindquist 坐标）
+- FLRW 度规
 
-例如 Schwarzschild 度规可以这样输入：
+Schwarzschild 示例：
 
 ```text
 坐标符号: t, r, theta, phi
 标量常量: M
 自定义函数:
 度规矩阵:
-[[-(1 - 2M/r), 0, 0, 0],
- [0, 1/(1 - 2M/r), 0, 0],
- [0, 0, r^2, 0],
- [0, 0, 0, r^2*sin(theta)^2]]
+[-(1 - 2M/r), 0, 0, 0],
+[0, 1/(1 - 2M/r), 0, 0],
+[0, 0, r^2, 0],
+[0, 0, 0, r^2*sin(theta)^2]
 ```
+
+## 功能说明
+
+- 曲率计算使用本地 SymPy 引擎，不依赖 Mathematica notebook 或 EinsteinPy。
+- 引擎会缓存偏导数、利用 Christoffel 和 Riemann 的对称性，并只保存非零分量。
+- UI 的 LaTeX 输出使用较小的 STIX 数学字体渲染，适合窗口模式阅读。
+- 扰动作用量页支持自定义标量密度，例如：
+
+```text
+sqrtg*(R + alpha*R^2 + beta*Ricci2 + gamma*K + V)
+```
+
+其中 `sqrtg` 也可写作 `sqrt(-g)`；`R` 是 Ricci 标量，
+`Ricci2`/`Ricci^2` 表示 `R_{\mu\nu}R^{\mu\nu}`，
+`K`/`Riemann2`/`Riemann^2` 表示
+`R_{\mu\nu\rho\sigma}R^{\mu\nu\rho\sigma}`。其它名字会按用户标量或常量处理。
+展开采用 `η=(-,+,+,+)`，重复指标用 `η` 升降并求和；二阶 `R` 的 bulk 形式会按
+舍去总导数后的表达式展示。
 
 ## 注意
 
-复杂度规的符号化简可能很慢。建议先从内置示例开始，再逐步加入新的常量、
-函数或非对角项。
-
-二维张量和度规矩阵会按非零分量显示，例如 `g_00`、`R_11`。三维和四维张量
-也只显示非零分量，避免输出页被大量零项淹没。
+复杂非对角度规的符号化简仍可能很慢。建议先从内置示例开始，再逐步加入新的常量、
+函数或非对角项。默认会计算 Kretschmann 标量；如果只需要张量分量，可以在 UI 中关闭它。
+Kerr 是非对角度规，完整化简会明显慢于对角度规；如果只是检查分量，建议先关闭
+Kretschmann 标量。
