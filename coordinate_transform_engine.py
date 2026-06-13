@@ -50,6 +50,13 @@ SCHWARZSCHILD_METRIC_TEXT = (
     "[0, 0, 0, r^2*sin(theta)^2]"
 )
 
+SCHWARZSCHILD_NEAR_HORIZON_RINDLER_TEXT = (
+    "[-(r - 2*M)/(2*M), 0, 0, 0],\n"
+    "[0, 2*M/(r - 2*M), 0, 0],\n"
+    "[0, 0, (2*M)^2, 0],\n"
+    "[0, 0, 0, (2*M)^2*theta^2]"
+)
+
 
 TRANSFORM_EXAMPLES: dict[str, CoordinateTransformExample] = {
     "Eddington-Finkelstein 时间坐标": CoordinateTransformExample(
@@ -70,19 +77,23 @@ TRANSFORM_EXAMPLES: dict[str, CoordinateTransformExample] = {
             "可改为 v = t + r + 2*M*log(r/(2*M) - 1)。"
         ),
     ),
-    "Rindler 坐标（逆变换可计算）": CoordinateTransformExample(
-        name="Rindler 坐标（逆变换可计算）",
-        source_coords="t, x",
-        source_scalars="",
+    "Schwarzschild 近视界 Rindler 近似（逆变换可计算）": CoordinateTransformExample(
+        name="Schwarzschild 近视界 Rindler 近似（逆变换可计算）",
+        source_coords="t, r, theta, phi",
+        source_scalars="M",
         source_functions="",
-        source_metric="[-1, 0],\n[0, 1]",
-        new_coords="tau, rho",
+        source_metric=SCHWARZSCHILD_NEAR_HORIZON_RINDLER_TEXT,
+        new_coords="omega, rho, x, y",
         transform=(
-            "t = rho*sinh(tau)\n"
-            "x = rho*cosh(tau)"
+            "t = 4*M*omega\n"
+            "r = 2*M + rho^2/(8*M)\n"
+            "theta = sqrt(x^2 + y^2)/(2*M)\n"
+            "phi = atan(y/x)"
         ),
         description=(
-            "右 Rindler 楔区常用逆变换，已选择正 rho 分支，可直接计算。"
+            "Schwarzschild 视界附近的 Rindler 近似：原度规已取 r≈2M 和小角片近似，"
+            "再用 rho≈2*sqrt(2*M*(r-2*M))、omega=t/(4*M)、"
+            "x=2*M*theta*cos(phi)、y=2*M*theta*sin(phi) 的逆变换直接计算。"
         ),
         direction="inverse",
     ),

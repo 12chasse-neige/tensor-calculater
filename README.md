@@ -125,16 +125,28 @@ phi = phi
 
 坐标变换页的示例下拉还包含可直接计算的逆变换示例：
 
-- Rindler 坐标（有时会误拼成 Rinder）：
+- Schwarzschild 近视界 Rindler 近似（Rindler 有时会误拼成 Rinder）：
+  这个示例的原度规不是完整 Schwarzschild 度规，而是先在 `r≈2M` 和小角片
+  `sin(theta)≈theta` 下近似为
+  ```text
+  ds^2 ≈ -(r-2M)/(2M) dt^2 + 2M/(r-2M) dr^2
+         + (2M)^2(dtheta^2 + theta^2 dphi^2)
+  ```
   ```text
   输入方向:
   旧坐标 = 新坐标函数（直接计算）
 
   旧坐标关于新坐标的表达式:
-  t = rho*sinh(tau)
-  x = rho*cosh(tau)
+  t = 4*M*omega
+  r = 2*M + rho^2/(8*M)
+  theta = sqrt(x^2 + y^2)/(2*M)
+  phi = atan(y/x)
   ```
-  这对应右 Rindler 楔区常用分支，会得到 `ds^2=-rho^2 d tau^2 + d rho^2`。
+  这等价于课堂里的
+  `rho≈2*sqrt(2*M*(r-2*M))`、`omega=t/(4*M)`、
+  `x=2*M*theta*cos(phi)`、`y=2*M*theta*sin(phi)`，会得到
+  `ds^2≈-rho^2 d omega^2 + d rho^2 + dx^2 + dy^2`。其中
+  `phi = atan(y/x)` 只是局部角片中的一个分支写法。
 - Kruskal-Szekeres 坐标：
   ```text
   输入方向:
