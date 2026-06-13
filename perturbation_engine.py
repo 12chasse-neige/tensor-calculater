@@ -235,20 +235,20 @@ def _formula_blocks_for_definitions() -> tuple[FormulaBlock, ...]:
             "formula",
             "",
             (
-                r"R^{(1)}=\partial_\mu\partial_\nu h^{\mu\nu}"
-                r"-\partial^\mu\partial_\mu h"
+                r"R^{(1)}=\partial^\mu\partial_\mu h"
+                r"-\partial_\mu\partial_\nu h^{\mu\nu}"
             ),
-            "R1 = d_m d_n h^mn - d^m d_m h",
+            "R1 = d^m d_m h - d_m d_n h^mn",
         ),
         FormulaBlock(
             "formula",
             "",
             (
                 r"R^{(1)}_{\mu\nu}=\frac{1}{2}\left("
-                r"\partial_\rho\partial_\mu h^\rho{}_\nu"
-                r"+\partial_\rho\partial_\nu h^\rho{}_\mu"
-                r"-\partial_\mu\partial_\nu h"
-                r"-\partial^\rho\partial_\rho h_{\mu\nu}\right)"
+                r"\partial_\mu\partial_\nu h"
+                r"+\partial^\rho\partial_\rho h_{\mu\nu}"
+                r"-\partial_\rho\partial_\mu h^\rho{}_\nu"
+                r"-\partial_\rho\partial_\nu h^\rho{}_\mu\right)"
             ),
             "linear Ricci tensor",
         ),
@@ -257,10 +257,10 @@ def _formula_blocks_for_definitions() -> tuple[FormulaBlock, ...]:
             "",
             (
                 r"R^{(1)}_{\mu\nu\rho\sigma}=\frac{1}{2}\left("
-                r"\partial_\rho\partial_\nu h_{\mu\sigma}"
-                r"+\partial_\sigma\partial_\mu h_{\nu\rho}"
-                r"-\partial_\rho\partial_\mu h_{\nu\sigma}"
-                r"-\partial_\sigma\partial_\nu h_{\mu\rho}\right)"
+                r"\partial_\rho\partial_\mu h_{\nu\sigma}"
+                r"+\partial_\sigma\partial_\nu h_{\mu\rho}"
+                r"-\partial_\rho\partial_\nu h_{\mu\sigma}"
+                r"-\partial_\sigma\partial_\mu h_{\nu\rho}\right)"
             ),
             "linear Riemann tensor",
         ),
@@ -269,10 +269,10 @@ def _formula_blocks_for_definitions() -> tuple[FormulaBlock, ...]:
             "",
             (
                 r"\mathcal{L}^{(2)}_{\mathrm{EH}}"
-                r"=\frac{1}{4}\partial_\lambda h_{\mu\nu}\partial^\lambda h^{\mu\nu}"
-                r"-\frac{1}{2}\partial_\mu h^{\mu\nu}\partial^\lambda h_{\lambda\nu}"
-                r"+\frac{1}{2}\partial_\mu h^{\mu\nu}\partial_\nu h"
-                r"-\frac{1}{4}\partial_\lambda h\,\partial^\lambda h"
+                r"=-\frac{1}{4}\partial_\lambda h_{\mu\nu}\partial^\lambda h^{\mu\nu}"
+                r"+\frac{1}{2}\partial_\mu h^{\mu\nu}\partial^\lambda h_{\lambda\nu}"
+                r"-\frac{1}{2}\partial_\mu h^{\mu\nu}\partial_\nu h"
+                r"+\frac{1}{4}\partial_\lambda h\,\partial^\lambda h"
             ),
             "Fierz-Pauli bulk quadratic density",
         ),
@@ -348,7 +348,10 @@ def custom_action_perturbation(
 
     return PerturbationResult(
         action_name="Custom action",
-        convention="eta=(-,+,+,+), formal scalar-density expansion to O(epsilon^2)",
+        convention=(
+            "eta=(-,+,+,+), R^lambda_{mu nu kappa} = "
+            "Gamma^lambda_{mu nu,kappa} - Gamma^lambda_{mu kappa,nu} + ..."
+        ),
         blocks=tuple(blocks),
     )
 

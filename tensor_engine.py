@@ -657,15 +657,15 @@ class TensorCalculator:
                 for mu in range(self.n):
                     for nu in range(mu + 1, self.n):
                         total = self._derivative(
-                            gamma_value(rho, nu, sigma), mu
-                        ) - self._derivative(gamma_value(rho, mu, sigma), nu)
+                            gamma_value(rho, mu, sigma), nu
+                        ) - self._derivative(gamma_value(rho, nu, sigma), mu)
 
                         for alpha in range(self.n):
-                            left = gamma_value(rho, mu, alpha) * gamma_value(
-                                alpha, nu, sigma
-                            )
-                            right = gamma_value(rho, nu, alpha) * gamma_value(
+                            left = gamma_value(rho, nu, alpha) * gamma_value(
                                 alpha, mu, sigma
+                            )
+                            right = gamma_value(rho, mu, alpha) * gamma_value(
+                                alpha, nu, sigma
                             )
                             if left != 0 or right != 0:
                                 total += left - right
@@ -697,14 +697,14 @@ class TensorCalculator:
                 total = sp.S.Zero
                 for rho in range(self.n):
                     total += self._derivative(
-                        gamma_value(rho, nu, sigma), rho
-                    ) - self._derivative(gamma_value(rho, rho, sigma), nu)
+                        gamma_value(rho, rho, sigma), nu
+                    ) - self._derivative(gamma_value(rho, nu, sigma), rho)
                     for alpha in range(self.n):
-                        left = gamma_value(rho, rho, alpha) * gamma_value(
-                            alpha, nu, sigma
-                        )
-                        right = gamma_value(rho, nu, alpha) * gamma_value(
+                        left = gamma_value(rho, nu, alpha) * gamma_value(
                             alpha, rho, sigma
+                        )
+                        right = gamma_value(rho, rho, alpha) * gamma_value(
+                            alpha, nu, sigma
                         )
                         if left != 0 or right != 0:
                             total += left - right

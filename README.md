@@ -56,6 +56,10 @@ Schwarzschild 示例：
 ## 功能说明
 
 - 曲率计算使用本地 SymPy 引擎，不依赖 Mathematica notebook 或 EinsteinPy。
+- Riemann 张量约定为
+  `R^lambda_{mu nu kappa} = Gamma^lambda_{mu nu,kappa} - Gamma^lambda_{mu kappa,nu} + Gamma^lambda_{alpha kappa} Gamma^alpha_{mu nu} - Gamma^lambda_{alpha nu} Gamma^alpha_{mu kappa}`，
+  即代码中的索引顺序 `(lambda, mu, nu, kappa)` 表示
+  `R^lambda_{mu nu kappa}`。
 - 引擎会缓存偏导数、利用 Christoffel 和 Riemann 的对称性，并只保存非零分量。
 - UI 的 LaTeX 输出使用较小的 STIX 数学字体渲染，适合窗口模式阅读。
 - 扰动作用量页支持自定义标量密度，例如：
