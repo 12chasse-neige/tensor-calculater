@@ -60,6 +60,13 @@ BORDER = "#cfd6e6"
 ACCENT = "#265bbd"
 ERROR = "#ad2f38"
 CODE_FONT = ("Menlo", 11)
+TRANSFORM_DIRECTION_LABELS = {
+    "forward": "新坐标 = 旧坐标函数（自动求逆）",
+    "inverse": "旧坐标 = 新坐标函数（直接计算）",
+}
+TRANSFORM_DIRECTION_VALUES = {
+    label: value for value, label in TRANSFORM_DIRECTION_LABELS.items()
+}
 
 
 def configure_fonts(root: tk.Tk) -> None:
@@ -391,7 +398,7 @@ class GRCalculatorApp:
 
         transform_tab = ttk.Frame(self.input_notebook, style="Panel.TFrame", padding=(10, 12))
         transform_tab.columnconfigure(0, weight=1)
-        transform_tab.rowconfigure(5, weight=1)
+        transform_tab.rowconfigure(7, weight=1)
         self.input_notebook.add(transform_tab, text="坐标变换")
         self.create_transform_inputs(transform_tab)
 
@@ -511,15 +518,32 @@ class GRCalculatorApp:
             command=self.load_selected_transform_example,
         ).grid(row=0, column=1, padx=(8, 0))
 
+        ttk.Label(parent, text="输入方向").grid(row=2, column=0, sticky="w")
+        self.transform_direction_var = tk.StringVar(
+            value=TRANSFORM_DIRECTION_LABELS["forward"]
+        )
+        self.transform_direction_combo = ttk.Combobox(
+            parent,
+            textvariable=self.transform_direction_var,
+            values=list(TRANSFORM_DIRECTION_LABELS.values()),
+            state="readonly",
+        )
+        self.transform_direction_combo.grid(row=3, column=0, sticky="ew", pady=(3, 10))
+        self.transform_direction_combo.bind(
+            "<<ComboboxSelected>>",
+            lambda _event: self.update_transform_direction_text(),
+        )
+
         self.transform_coord_entry = self.add_entry(
             parent,
             "新坐标符号",
-            2,
+            4,
             "v, r, theta, phi",
         )
 
-        ttk.Label(parent, text="新坐标关于旧坐标的表达式").grid(
-            row=4, column=0, sticky="w", pady=(4, 3)
+        self.transform_expr_label = ttk.Label(parent, text="")
+        self.transform_expr_label.grid(
+            row=6, column=0, sticky="w", pady=(4, 3)
         )
         self.transform_text = scrolledtext.ScrolledText(
             parent,
@@ -536,15 +560,21 @@ class GRCalculatorApp:
             highlightbackground=BORDER,
             highlightcolor=ACCENT,
         )
-        self.transform_text.grid(row=5, column=0, sticky="nsew")
+        self.transform_text.grid(row=7, column=0, sticky="nsew")
 
-        hint = "输入方向固定为：新坐标 = 旧坐标的函数；程序会自动求逆后变换度规。"
-        ttk.Label(parent, text=hint, style="Muted.TLabel", wraplength=440).grid(
-            row=6, column=0, sticky="ew", pady=(8, 10)
+        self.transform_hint_var = tk.StringVar()
+        ttk.Label(
+            parent,
+            textvariable=self.transform_hint_var,
+            style="Muted.TLabel",
+            wraplength=440,
+        ).grid(
+            row=8, column=0, sticky="ew", pady=(8, 10)
         )
 
         action_row = ttk.Frame(parent, style="Panel.TFrame")
-        action_row.grid(row=7, column=0, sticky="ew")
+        action_row.grid(row=9, column=0, sticky="ew")
+        action_row.columnconfigure(0, weight=1)
         action_row.columnconfigure(1, weight=1)
         self.transform_btn = ttk.Button(
             action_row,
@@ -552,13 +582,14 @@ class GRCalculatorApp:
             style="Accent.TButton",
             command=self.calculate_metric_transform,
         )
-        self.transform_btn.grid(row=0, column=1, sticky="ew", padx=(0, 4))
+        self.transform_btn.grid(row=0, column=0, sticky="ew", padx=(0, 4))
         self.busy_buttons.append(self.transform_btn)
         ttk.Button(
             action_row,
             text="载入曲率页",
             command=self.load_transformed_metric,
-        ).grid(row=0, column=2, sticky="ew", padx=(4, 0))
+        ).grid(row=0, column=1, sticky="ew", padx=(4, 0))
+        self.update_transform_direction_text()
 
     def add_entry(
         self, parent: ttk.Frame, label: str, row: int, placeholder: str
@@ -639,6 +670,8 @@ class GRCalculatorApp:
         example = TRANSFORM_EXAMPLES[name]
         self.active_transform_example = example
         self.transform_example_var.set(example.name)
+        self.transform_direction_var.set(TRANSFORM_DIRECTION_LABELS[example.direction])
+        self.update_transform_direction_text()
 
         if include_source:
             self.coord_entry.delete(0, tk.END)
@@ -657,21 +690,26 @@ class GRCalculatorApp:
         self.last_transform_result = None
         self.last_transform_metric_text = ""
 
-        if example.auto_solve_supported:
-            self.outputs["transform"].set_entries([("text", example.description)])
-            self.status_var.set(f"已载入坐标变换示例：{example.name}")
-        else:
-            self.outputs["transform"].set_entries(
-                [
-                    ("heading", example.name),
-                    ("text", example.description),
-                    (
-                        "text",
-                        "此示例用于展示标准写法；当前自动求逆不会直接计算它。",
-                    ),
-                ]
+        self.outputs["transform"].set_entries([("text", example.description)])
+        self.status_var.set(f"已载入坐标变换示例：{example.name}")
+
+    def current_transform_direction(self) -> str:
+        return TRANSFORM_DIRECTION_VALUES.get(
+            self.transform_direction_var.get(),
+            "forward",
+        )
+
+    def update_transform_direction_text(self) -> None:
+        if self.current_transform_direction() == "forward":
+            self.transform_expr_label.configure(text="新坐标关于旧坐标的表达式")
+            self.transform_hint_var.set(
+                "输入方向：新坐标 = 旧坐标的函数；程序会自动求逆后变换度规。"
             )
-            self.status_var.set(f"已载入暂不自动求逆的示例：{example.name}")
+        else:
+            self.transform_expr_label.configure(text="旧坐标关于新坐标的表达式")
+            self.transform_hint_var.set(
+                "输入方向：旧坐标 = 新坐标的函数；程序直接用该逆变换计算新度规。"
+            )
 
     def geometry_input_key(self) -> tuple[str, str, str, str, bool]:
         return (
@@ -764,16 +802,13 @@ class GRCalculatorApp:
             self.root.after(80, self.drain_messages)
 
     def calculate_metric_transform(self) -> None:
-        if self.is_active_unsupported_transform_example():
-            self.render_unsupported_transform_example()
-            return
-
         try:
             parsed = self.parse_inputs()
             result = transform_metric(
                 parsed,
                 self.transform_coord_entry.get(),
                 self.transform_text.get("1.0", tk.END),
+                direction=self.current_transform_direction(),
             )
         except Exception as exc:
             self.last_transform_result = None
@@ -788,34 +823,6 @@ class GRCalculatorApp:
         self.outputs["transform"].set_entries(self.transform_entries(result))
         self.output_notebook.select(self.outputs["transform"])
         self.status_var.set("坐标变换完成")
-
-    def is_active_unsupported_transform_example(self) -> bool:
-        example = self.active_transform_example
-        if example is None or example.auto_solve_supported:
-            return False
-        return (
-            self.transform_coord_entry.get().strip() == example.new_coords.strip()
-            and self.transform_text.get("1.0", tk.END).strip() == example.transform.strip()
-        )
-
-    def render_unsupported_transform_example(self) -> None:
-        example = self.active_transform_example
-        if example is None:
-            return
-        self.last_transform_result = None
-        self.last_transform_metric_text = ""
-        self.outputs["transform"].set_entries(
-            [
-                ("heading", example.name),
-                ("text", example.description),
-                (
-                    "text",
-                    "这个标准正变换当前不能可靠自动求逆；已避免直接调用求解器，以免界面长时间卡住。",
-                ),
-            ]
-        )
-        self.output_notebook.select(self.outputs["transform"])
-        self.status_var.set("该示例暂不支持自动求逆")
 
     def load_transformed_metric(self) -> None:
         self.calculate_metric_transform()
@@ -909,17 +916,23 @@ class GRCalculatorApp:
     def transform_entries(
         self, result: CoordinateTransformResult
     ) -> list[tuple[str, str] | tuple[str, str, str]]:
-        entries: list[tuple[str, str] | tuple[str, str, str]] = [("heading", "输入的正变换 y(x)")]
-        for new_coord, expression in zip(result.new_coords, result.forward_map):
-            entries.append(
-                (
-                    "formula",
-                    rf"{sp.latex(new_coord)} = {latex_expression(expression)}",
-                    f"{new_coord} = {text_expression(expression)}",
+        entries: list[tuple[str, str] | tuple[str, str, str]] = []
+        if result.direction == "forward":
+            entries.append(("heading", "输入的正变换 y(x)"))
+            for new_coord, expression in zip(result.new_coords, result.forward_map):
+                entries.append(
+                    (
+                        "formula",
+                        rf"{sp.latex(new_coord)} = {latex_expression(expression)}",
+                        f"{new_coord} = {text_expression(expression)}",
+                    )
                 )
-            )
 
-        entries.append(("heading", "自动求得的逆变换 x(y)"))
+            entries.append(("heading", "自动求得的逆变换 x(y)"))
+        else:
+            entries.append(("heading", "输入的逆变换 x(y)"))
+            entries.append(("text", "本次未自动求正变换，直接使用用户输入的逆变换。"))
+
         for old_coord, expression in zip(result.old_coords, result.inverse_map):
             entries.append(
                 (

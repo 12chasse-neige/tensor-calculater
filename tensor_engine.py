@@ -220,6 +220,7 @@ def _add_math_namespace(local_dict: dict[str, object]) -> None:
         "asin",
         "acos",
         "atan",
+        "atanh",
         "sinh",
         "cosh",
         "tanh",
@@ -242,6 +243,7 @@ def _add_math_namespace(local_dict: dict[str, object]) -> None:
         "zeros",
         "ones",
         "eye",
+        "LambertW",
     ]
     for name in math_names:
         if name == "ln":

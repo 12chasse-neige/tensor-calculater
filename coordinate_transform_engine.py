@@ -23,6 +23,7 @@ from tensor_engine import (
 class CoordinateTransformResult:
     old_coords: tuple[sp.Symbol, ...]
     new_coords: tuple[sp.Symbol, ...]
+    direction: str
     forward_map: tuple[sp.Expr, ...]
     inverse_map: tuple[sp.Expr, ...]
     jacobian: sp.Matrix
@@ -39,7 +40,7 @@ class CoordinateTransformExample:
     new_coords: str
     transform: str
     description: str
-    auto_solve_supported: bool = True
+    direction: str = "forward"
 
 
 SCHWARZSCHILD_METRIC_TEXT = (
@@ -69,41 +70,39 @@ TRANSFORM_EXAMPLES: dict[str, CoordinateTransformExample] = {
             "可改为 v = t + r + 2*M*log(r/(2*M) - 1)。"
         ),
     ),
-    "Rindler 标准正变换": CoordinateTransformExample(
-        name="Rindler 标准正变换",
+    "Rindler 坐标（逆变换可计算）": CoordinateTransformExample(
+        name="Rindler 坐标（逆变换可计算）",
         source_coords="t, x",
         source_scalars="",
         source_functions="",
         source_metric="[-1, 0],\n[0, 1]",
         new_coords="tau, rho",
         transform=(
-            "tau = log((x + t)/(x - t))/2\n"
-            "rho = sqrt(x^2 - t^2)"
+            "t = rho*sinh(tau)\n"
+            "x = rho*cosh(tau)"
         ),
         description=(
-            "右 Rindler 楔区的标准正变换。自动求逆会遇到正负分支选择，"
-            "当前版本会提示不能唯一求逆。"
+            "右 Rindler 楔区常用逆变换，已选择正 rho 分支，可直接计算。"
         ),
-        auto_solve_supported=False,
+        direction="inverse",
     ),
-    "Kruskal-Szekeres 标准正变换": CoordinateTransformExample(
-        name="Kruskal-Szekeres 标准正变换",
+    "Kruskal-Szekeres 坐标（逆变换可计算）": CoordinateTransformExample(
+        name="Kruskal-Szekeres 坐标（逆变换可计算）",
         source_coords="t, r, theta, phi",
         source_scalars="M",
         source_functions="",
         source_metric=SCHWARZSCHILD_METRIC_TEXT,
         new_coords="T, X, theta, phi",
         transform=(
-            "T = sqrt(r/(2*M) - 1)*exp(r/(4*M))*sinh(t/(4*M))\n"
-            "X = sqrt(r/(2*M) - 1)*exp(r/(4*M))*cosh(t/(4*M))\n"
+            "t = 4*M*atanh(T/X)\n"
+            "r = 2*M*(1 + LambertW((X^2 - T^2)/E))\n"
             "theta = theta\n"
             "phi = phi"
         ),
         description=(
-            "Schwarzschild 外区常见 Kruskal-Szekeres 正变换。逆变换含 LambertW "
-            "并有区域分支，当前版本不自动求逆。"
+            "Schwarzschild 外区常见 Kruskal-Szekeres 逆变换，采用含 LambertW 的常见区域分支。"
         ),
-        auto_solve_supported=False,
+        direction="inverse",
     ),
 }
 
@@ -121,6 +120,26 @@ def _forward_namespace(parsed: ParsedInputs) -> dict[str, object]:
     for function_name, _args in parsed.function_defs:
         if function_name in local_dict:
             raise ValueError(f"自定义函数 '{function_name}' 与旧坐标或常量名冲突。")
+        local_dict[function_name] = sp.Function(function_name)
+
+    return local_dict
+
+
+def _inverse_namespace(
+    parsed: ParsedInputs, new_coords: tuple[sp.Symbol, ...]
+) -> dict[str, object]:
+    local_dict: dict[str, object] = {str(coord): coord for coord in new_coords}
+    _add_math_namespace(local_dict)
+
+    for scalar in parsed.scalar_symbols:
+        name = str(scalar)
+        if name in local_dict:
+            raise ValueError(f"标量常量 '{name}' 与新坐标名冲突。")
+        local_dict[name] = scalar
+
+    for function_name, _args in parsed.function_defs:
+        if function_name in local_dict:
+            raise ValueError(f"自定义函数 '{function_name}' 与新坐标或常量名冲突。")
         local_dict[function_name] = sp.Function(function_name)
 
     return local_dict
@@ -205,6 +224,34 @@ def parse_forward_assignments(
     return tuple(assignments[str(coord)] for coord in new_coords)
 
 
+def parse_inverse_assignments(
+    old_coords: tuple[sp.Symbol, ...],
+    transform_text: str,
+    local_dict: dict[str, object],
+) -> tuple[sp.Expr, ...]:
+    old_coord_names = {str(coord) for coord in old_coords}
+    assignments: dict[str, sp.Expr] = {}
+
+    for item in _assignment_items(transform_text):
+        if "=" not in item:
+            raise ValueError(f"坐标变换 '{item}' 缺少等号，应写成 旧坐标 = 新坐标表达式。")
+        lhs, rhs = (part.strip() for part in item.split("=", 1))
+        validate_identifier(lhs, "旧坐标")
+        if lhs not in old_coord_names:
+            raise ValueError(f"坐标变换左侧 '{lhs}' 不在旧坐标列表中。")
+        if lhs in assignments:
+            raise ValueError(f"旧坐标 '{lhs}' 的变换重复。")
+        if not rhs:
+            raise ValueError(f"旧坐标 '{lhs}' 的右侧表达式不能为空。")
+        assignments[lhs] = _parse_transform_expr(rhs, local_dict)
+
+    missing = [str(coord) for coord in old_coords if str(coord) not in assignments]
+    if missing:
+        raise ValueError("缺少旧坐标的变换: " + ", ".join(missing))
+
+    return tuple(assignments[str(coord)] for coord in old_coords)
+
+
 def _temporary_symbols(coords: tuple[sp.Symbol, ...], prefix: str) -> tuple[sp.Dummy, ...]:
     return tuple(sp.Dummy(f"{prefix}_{index}_{coord}") for index, coord in enumerate(coords))
 
@@ -273,7 +320,12 @@ def transform_metric(
     parsed: ParsedInputs,
     new_coord_text: str,
     transform_text: str,
+    *,
+    direction: str = "forward",
 ) -> CoordinateTransformResult:
+    if direction not in {"forward", "inverse"}:
+        raise ValueError("坐标变换方向必须是 forward 或 inverse。")
+
     new_coords = parse_coordinate_symbols(new_coord_text)
     if len(new_coords) != len(parsed.coords):
         raise ValueError(
@@ -281,14 +333,21 @@ def transform_metric(
         )
     _validate_new_coordinate_names(parsed, new_coords)
 
-    local_dict = _forward_namespace(parsed)
-    forward_map = parse_forward_assignments(new_coords, transform_text, local_dict)
-    inverse_map = solve_inverse_map(parsed.coords, new_coords, forward_map)
+    if direction == "forward":
+        local_dict = _forward_namespace(parsed)
+        forward_map = parse_forward_assignments(new_coords, transform_text, local_dict)
+        inverse_map = solve_inverse_map(parsed.coords, new_coords, forward_map)
+    else:
+        local_dict = _inverse_namespace(parsed, new_coords)
+        inverse_map = parse_inverse_assignments(parsed.coords, transform_text, local_dict)
+        forward_map = ()
+
     jacobian, transformed = _transform_metric_from_inverse(parsed, new_coords, inverse_map)
 
     return CoordinateTransformResult(
         old_coords=parsed.coords,
         new_coords=new_coords,
+        direction=direction,
         forward_map=forward_map,
         inverse_map=inverse_map,
         jacobian=jacobian,
