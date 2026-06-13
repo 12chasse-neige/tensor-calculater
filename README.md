@@ -56,6 +56,8 @@ Schwarzschild 示例：
 ## 功能说明
 
 - 曲率计算使用本地 SymPy 引擎，不依赖 Mathematica notebook 或 EinsteinPy。
+- 坐标变换页可以从“曲率”页当前输入的原度规出发，输入新坐标和
+  “新坐标 = 旧坐标的函数”，自动求逆后返回变换后的新度规，并可一键载入曲率页继续计算。
 - Riemann 张量约定为
   `R^lambda_{mu nu kappa} = Gamma^lambda_{mu nu,kappa} - Gamma^lambda_{mu kappa,nu} + Gamma^lambda_{alpha kappa} Gamma^alpha_{mu nu} - Gamma^lambda_{alpha nu} Gamma^alpha_{mu kappa}`，
   即代码中的索引顺序 `(lambda, mu, nu, kappa)` 表示
@@ -81,3 +83,57 @@ sqrtg*(R + alpha*R^2 + beta*Ricci2 + gamma*K + V)
 函数或非对角项。默认会计算 Kretschmann 标量；内置 Kerr 度规会使用已知闭式表达式，
 但 Riemann 分量本身仍需要较多符号计算。如果只是检查低阶张量分量，可以在 UI 中关闭
 Kretschmann 标量。
+
+## 坐标变换输入
+
+坐标变换页读取“曲率”页中的原坐标、常量、自定义函数和原度规。输入约定为：
+
+- 新坐标符号：用逗号分隔，例如 `v, r, theta, phi`。
+- 坐标变换：每行写一个新坐标关于旧坐标的表达式，例如 `v = t + r`。
+- 变换方向固定为 `新坐标 = 旧坐标的函数`，程序会自动求逆；如果不能唯一求逆，
+  会提示用户改用更简单的变换写法。
+- 坐标名必须是合法的 Python/SymPy 标识符，不能直接写 `t'`；建议写作
+  `tp`、`t_prime`、`v` 等。
+
+程序使用
+
+```text
+g'_{ab}(y) = (∂x^μ/∂y^a)(∂x^ν/∂y^b) g_{μν}(x(y))
+```
+
+生成新度规。点击“载入曲率页”后，可以继续用现有“计算曲率”按钮计算新坐标下的几何量。
+
+Schwarzschild 到 Eddington-Finkelstein 时间坐标的输入示例：
+
+```text
+新坐标符号:
+v, r, theta, phi
+
+新坐标关于旧坐标的表达式:
+v = t + 2*M*log(r/(2*M) - 1)
+r = r
+theta = theta
+phi = phi
+```
+
+对应的新度规会包含非零交叉项 `g_vr = g_rv = 2M/r`，并且
+`g_rr = 1 + 2M/r`。如果使用 null advanced coordinate
+`v = t + r + 2*M*log(r/(2*M) - 1)`，则会得到 `g_vr = g_rv = 1`
+和 `g_rr = 0`。
+
+坐标变换页的示例下拉还包含：
+
+- Rindler 标准正变换（有时会误拼成 Rinder）：
+  ```text
+  tau = log((x + t)/(x - t))/2
+  rho = sqrt(x^2 - t^2)
+  ```
+  该变换需要选择右 Rindler 楔区的正分支；当前自动求逆会提示不能唯一求逆。
+- Kruskal-Szekeres 标准正变换：
+  ```text
+  T = sqrt(r/(2*M) - 1)*exp(r/(4*M))*sinh(t/(4*M))
+  X = sqrt(r/(2*M) - 1)*exp(r/(4*M))*cosh(t/(4*M))
+  theta = theta
+  phi = phi
+  ```
+  其逆变换含 LambertW 和区域分支，当前版本只作为标准写法示例展示，不直接自动计算。
