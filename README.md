@@ -9,16 +9,28 @@ Kretschmann 标量，也可以把用户输入的几何作用量密度在
 
 项目环境保存在当前目录的 `.venv` 中：
 
+**Linux / macOS:**
 ```bash
 ./run_ui.sh
 ```
 
+**Windows:**
+```cmd
+run_ui.bat
+```
+
 如果需要重建环境：
 
+**Linux / macOS:**
 ```bash
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
-./run_ui.sh
+```
+
+**Windows:**
+```cmd
+python -m venv .venv
+.venv\Scripts\python -m pip install -r requirements.txt
 ```
 
 ## 曲率计算输入
