@@ -2,7 +2,7 @@
 
 这是一个纯 Python / SymPy 的广义相对论符号计算 GUI。它可以从用户输入的度规计算
 非零的 Christoffel 联络、Riemann 张量、Ricci 张量、Ricci 标量和
-Kretschmann 标量，也可以把用户输入的几何作用量密度在
+Kretschmann 标量，也可以把用户输入的几何表达式或拉格朗日量/密度在
 `g_{\mu\nu}=\eta_{\mu\nu}+\epsilon h_{\mu\nu}` 下展开到二阶。
 
 ## 运行
@@ -74,13 +74,22 @@ Schwarzschild 示例：
   `R^lambda_{mu nu kappa}`。
 - 引擎会缓存偏导数、利用 Christoffel 和 Riemann 的对称性，并只保存非零分量。
 - UI 的 LaTeX 输出使用较小的 STIX 数学字体渲染，适合窗口模式阅读。
-- 扰动作用量页支持自定义标量密度，例如：
+- 扰动展开页支持自定义几何表达式。可以输入单个张量，例如：
 
 ```text
-sqrtg*(R + alpha*R^2 + beta*Ricci2 + gamma*K + V)
+Ricci
 ```
 
-其中 `sqrtg` 也可写作 `sqrt(-g)`；`R` 是 Ricci 标量，
+也可以输入拉格朗日量/密度，例如：
+
+```text
+sqrtg*(gInv*Ricci + alpha*R^2 + beta*Ricci2 + gamma*K + V)
+```
+
+其中 `sqrtg` 也可写作 `sqrt(-g)`；`R` 是 Ricci 标量，`Ricci` 是
+Ricci 张量，`Riemann` 是 Riemann 张量，`g`/`gInv`/`gUU` 是逆度规，
+`gCov`/`gDD` 是协变度规。
+`gInv*Ricci` 会按 `g^{\mu\nu}R_{\mu\nu}=R` 展开。
 `Ricci2`/`Ricci^2` 表示 `R_{\mu\nu}R^{\mu\nu}`，
 `K`/`Riemann2`/`Riemann^2` 表示
 `R_{\mu\nu\rho\sigma}R^{\mu\nu\rho\sigma}`。其它名字会按用户标量或常量处理。

@@ -377,7 +377,7 @@ class GRCalculatorApp:
 
         perturbation_tab = ttk.Frame(self.input_notebook, style="Panel.TFrame", padding=(10, 12))
         perturbation_tab.columnconfigure(0, weight=1)
-        self.input_notebook.add(perturbation_tab, text="扰动作用量")
+        self.input_notebook.add(perturbation_tab, text="扰动展开")
         self.create_perturbation_inputs(perturbation_tab)
 
         right = ttk.Frame(self.root, style="App.TFrame", padding=(14, 14))
@@ -394,7 +394,7 @@ class GRCalculatorApp:
             ("riemann", "Riemann"),
             ("ricci", "Ricci"),
             ("scalars", "标量"),
-            ("perturbation", "扰动作用量"),
+            ("perturbation", "扰动展开"),
         ):
             output = FormulaOutput(self.output_notebook)
             self.outputs[key] = output
@@ -481,7 +481,7 @@ class GRCalculatorApp:
     def create_perturbation_inputs(self, parent: ttk.Frame) -> None:
         parent.rowconfigure(1, weight=1)
 
-        ttk.Label(parent, text="作用量密度").grid(row=0, column=0, sticky="w")
+        ttk.Label(parent, text="待展开表达式").grid(row=0, column=0, sticky="w")
         self.action_text = scrolledtext.ScrolledText(
             parent,
             width=42,
@@ -500,7 +500,7 @@ class GRCalculatorApp:
         self.action_text.grid(row=1, column=0, sticky="nsew", pady=(3, 12))
         self.action_text.insert(
             "1.0",
-            "sqrtg*(R + alpha*R^2 + beta*Ricci2 + gamma*K + V)",
+            "sqrtg*(gInv*Ricci + alpha*R^2 + beta*Ricci2 + gamma*K + V)",
         )
 
         self.action_scalar_entry = self.add_entry(
@@ -511,7 +511,7 @@ class GRCalculatorApp:
         )
 
         convention = (
-            "可用 sqrtg 或 sqrt(-g)、R、Ricci2/Ricci^2、K/Riemann2/Riemann^2。"
+            "可输入 Ricci、Riemann、g/gInv/gUU、gCov/gDD、R、sqrtg；gInv*Ricci 表示 g^{μν}R_{μν}。"
         )
         ttk.Label(parent, text=convention, style="Muted.TLabel", wraplength=360).grid(
             row=4, column=0, sticky="ew", pady=(0, 14)
@@ -756,10 +756,10 @@ class GRCalculatorApp:
             )
         except Exception as exc:
             self.outputs["perturbation"].set_entries([("error", str(exc))])
-            self.status_var.set("扰动作用量生成失败")
+            self.status_var.set("扰动展开生成失败")
             return
         self.outputs["perturbation"].set_blocks(result.blocks)
-        self.status_var.set("已生成扰动作用量展开")
+        self.status_var.set("已生成扰动展开")
 
 
 def main() -> None:
