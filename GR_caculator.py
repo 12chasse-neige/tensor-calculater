@@ -30,6 +30,13 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
 from PIL import Image, ImageTk
 
+from coordinate_transform_engine import (
+    CoordinateTransformResult,
+    CoordinateTransformExample,
+    TRANSFORM_EXAMPLES,
+    metric_matrix_to_input_text,
+    transform_metric,
+)
 from perturbation_engine import FormulaBlock, calculate_perturbative_action
 from tensor_engine import (
     EXAMPLES,
@@ -53,6 +60,13 @@ BORDER = "#cfd6e6"
 ACCENT = "#265bbd"
 ERROR = "#ad2f38"
 CODE_FONT = ("Menlo", 11)
+TRANSFORM_DIRECTION_LABELS = {
+    "forward": "新坐标 = 旧坐标函数（自动求逆）",
+    "inverse": "旧坐标 = 新坐标函数（直接计算）",
+}
+TRANSFORM_DIRECTION_VALUES = {
+    label: value for value, label in TRANSFORM_DIRECTION_LABELS.items()
+}
 
 
 def configure_fonts(root: tk.Tk) -> None:
@@ -347,9 +361,16 @@ class GRCalculatorApp:
         self.worker: threading.Thread | None = None
         self.messages: queue.Queue[tuple[str, object]] = queue.Queue()
         self.busy_buttons: list[ttk.Button] = []
+        self.last_transform_result: CoordinateTransformResult | None = None
+        self.last_transform_metric_text = ""
+        self.active_transform_example: CoordinateTransformExample | None = None
 
         self.create_widgets()
         self.load_example("平直时空（球坐标）")
+        self.load_transform_example(
+            "Eddington-Finkelstein 时间坐标",
+            include_source=False,
+        )
         self.render_perturbation()
 
     def create_widgets(self) -> None:
@@ -375,6 +396,12 @@ class GRCalculatorApp:
         self.input_notebook.add(geometry_tab, text="曲率")
         self.create_geometry_inputs(geometry_tab)
 
+        transform_tab = ttk.Frame(self.input_notebook, style="Panel.TFrame", padding=(10, 12))
+        transform_tab.columnconfigure(0, weight=1)
+        transform_tab.rowconfigure(7, weight=1)
+        self.input_notebook.add(transform_tab, text="坐标变换")
+        self.create_transform_inputs(transform_tab)
+
         perturbation_tab = ttk.Frame(self.input_notebook, style="Panel.TFrame", padding=(10, 12))
         perturbation_tab.columnconfigure(0, weight=1)
         self.input_notebook.add(perturbation_tab, text="扰动作用量")
@@ -394,6 +421,7 @@ class GRCalculatorApp:
             ("riemann", "Riemann"),
             ("ricci", "Ricci"),
             ("scalars", "标量"),
+            ("transform", "坐标变换"),
             ("perturbation", "扰动作用量"),
         ):
             output = FormulaOutput(self.output_notebook)
@@ -469,6 +497,100 @@ class GRCalculatorApp:
         self.calculate_btn.grid(row=0, column=0, sticky="ew")
         self.busy_buttons.append(self.calculate_btn)
 
+    def create_transform_inputs(self, parent: ttk.Frame) -> None:
+        ttk.Label(parent, text="变换示例").grid(row=0, column=0, sticky="w")
+        example_row = ttk.Frame(parent, style="Panel.TFrame")
+        example_row.grid(row=1, column=0, sticky="ew", pady=(3, 12))
+        example_row.columnconfigure(0, weight=1)
+        self.transform_example_var = tk.StringVar(
+            value="Eddington-Finkelstein 时间坐标"
+        )
+        self.transform_example_combo = ttk.Combobox(
+            example_row,
+            textvariable=self.transform_example_var,
+            values=list(TRANSFORM_EXAMPLES.keys()),
+            state="readonly",
+        )
+        self.transform_example_combo.grid(row=0, column=0, sticky="ew")
+        ttk.Button(
+            example_row,
+            text="载入",
+            command=self.load_selected_transform_example,
+        ).grid(row=0, column=1, padx=(8, 0))
+
+        ttk.Label(parent, text="输入方向").grid(row=2, column=0, sticky="w")
+        self.transform_direction_var = tk.StringVar(
+            value=TRANSFORM_DIRECTION_LABELS["forward"]
+        )
+        self.transform_direction_combo = ttk.Combobox(
+            parent,
+            textvariable=self.transform_direction_var,
+            values=list(TRANSFORM_DIRECTION_LABELS.values()),
+            state="readonly",
+        )
+        self.transform_direction_combo.grid(row=3, column=0, sticky="ew", pady=(3, 10))
+        self.transform_direction_combo.bind(
+            "<<ComboboxSelected>>",
+            lambda _event: self.update_transform_direction_text(),
+        )
+
+        self.transform_coord_entry = self.add_entry(
+            parent,
+            "新坐标符号",
+            4,
+            "v, r, theta, phi",
+        )
+
+        self.transform_expr_label = ttk.Label(parent, text="")
+        self.transform_expr_label.grid(
+            row=6, column=0, sticky="w", pady=(4, 3)
+        )
+        self.transform_text = scrolledtext.ScrolledText(
+            parent,
+            width=62,
+            height=14,
+            wrap=tk.NONE,
+            font=CODE_FONT,
+            bg=FIELD_BG,
+            fg=TEXT,
+            insertbackground=TEXT,
+            relief="solid",
+            borderwidth=1,
+            highlightthickness=1,
+            highlightbackground=BORDER,
+            highlightcolor=ACCENT,
+        )
+        self.transform_text.grid(row=7, column=0, sticky="nsew")
+
+        self.transform_hint_var = tk.StringVar()
+        ttk.Label(
+            parent,
+            textvariable=self.transform_hint_var,
+            style="Muted.TLabel",
+            wraplength=440,
+        ).grid(
+            row=8, column=0, sticky="ew", pady=(8, 10)
+        )
+
+        action_row = ttk.Frame(parent, style="Panel.TFrame")
+        action_row.grid(row=9, column=0, sticky="ew")
+        action_row.columnconfigure(0, weight=1)
+        action_row.columnconfigure(1, weight=1)
+        self.transform_btn = ttk.Button(
+            action_row,
+            text="变换度规",
+            style="Accent.TButton",
+            command=self.calculate_metric_transform,
+        )
+        self.transform_btn.grid(row=0, column=0, sticky="ew", padx=(0, 4))
+        self.busy_buttons.append(self.transform_btn)
+        ttk.Button(
+            action_row,
+            text="载入曲率页",
+            command=self.load_transformed_metric,
+        ).grid(row=0, column=1, sticky="ew", padx=(4, 0))
+        self.update_transform_direction_text()
+
     def add_entry(
         self, parent: ttk.Frame, label: str, row: int, placeholder: str
     ) -> ttk.Entry:
@@ -540,6 +662,54 @@ class GRCalculatorApp:
         self.metric_text.delete("1.0", tk.END)
         self.metric_text.insert("1.0", example["metric"])
         self.status_var.set(f"已载入示例：{name}")
+
+    def load_selected_transform_example(self) -> None:
+        self.load_transform_example(self.transform_example_var.get(), include_source=True)
+
+    def load_transform_example(self, name: str, *, include_source: bool = True) -> None:
+        example = TRANSFORM_EXAMPLES[name]
+        self.active_transform_example = example
+        self.transform_example_var.set(example.name)
+        self.transform_direction_var.set(TRANSFORM_DIRECTION_LABELS[example.direction])
+        self.update_transform_direction_text()
+
+        if include_source:
+            self.coord_entry.delete(0, tk.END)
+            self.coord_entry.insert(0, example.source_coords)
+            self.scalar_entry.delete(0, tk.END)
+            self.scalar_entry.insert(0, example.source_scalars)
+            self.func_entry.delete(0, tk.END)
+            self.func_entry.insert(0, example.source_functions)
+            self.metric_text.delete("1.0", tk.END)
+            self.metric_text.insert("1.0", example.source_metric)
+
+        self.transform_coord_entry.delete(0, tk.END)
+        self.transform_coord_entry.insert(0, example.new_coords)
+        self.transform_text.delete("1.0", tk.END)
+        self.transform_text.insert("1.0", example.transform)
+        self.last_transform_result = None
+        self.last_transform_metric_text = ""
+
+        self.outputs["transform"].set_entries([("text", example.description)])
+        self.status_var.set(f"已载入坐标变换示例：{example.name}")
+
+    def current_transform_direction(self) -> str:
+        return TRANSFORM_DIRECTION_VALUES.get(
+            self.transform_direction_var.get(),
+            "forward",
+        )
+
+    def update_transform_direction_text(self) -> None:
+        if self.current_transform_direction() == "forward":
+            self.transform_expr_label.configure(text="新坐标关于旧坐标的表达式")
+            self.transform_hint_var.set(
+                "输入方向：新坐标 = 旧坐标的函数；程序会自动求逆后变换度规。"
+            )
+        else:
+            self.transform_expr_label.configure(text="旧坐标关于新坐标的表达式")
+            self.transform_hint_var.set(
+                "输入方向：旧坐标 = 新坐标的函数；程序直接用该逆变换计算新度规。"
+            )
 
     def geometry_input_key(self) -> tuple[str, str, str, str, bool]:
         return (
@@ -631,6 +801,46 @@ class GRCalculatorApp:
         if self.worker and self.worker.is_alive():
             self.root.after(80, self.drain_messages)
 
+    def calculate_metric_transform(self) -> None:
+        try:
+            parsed = self.parse_inputs()
+            result = transform_metric(
+                parsed,
+                self.transform_coord_entry.get(),
+                self.transform_text.get("1.0", tk.END),
+                direction=self.current_transform_direction(),
+            )
+        except Exception as exc:
+            self.last_transform_result = None
+            self.last_transform_metric_text = ""
+            self.outputs["transform"].set_entries([("error", str(exc))])
+            messagebox.showerror("坐标变换错误", str(exc))
+            self.status_var.set("坐标变换失败")
+            return
+
+        self.last_transform_result = result
+        self.last_transform_metric_text = metric_matrix_to_input_text(result.metric)
+        self.outputs["transform"].set_entries(self.transform_entries(result))
+        self.output_notebook.select(self.outputs["transform"])
+        self.status_var.set("坐标变换完成")
+
+    def load_transformed_metric(self) -> None:
+        self.calculate_metric_transform()
+        if self.last_transform_result is None:
+            return
+
+        coord_text = ", ".join(str(coord) for coord in self.last_transform_result.new_coords)
+        self.coord_entry.delete(0, tk.END)
+        self.coord_entry.insert(0, coord_text)
+        self.metric_text.delete("1.0", tk.END)
+        self.metric_text.insert("1.0", self.last_transform_metric_text)
+        self.input_notebook.select(0)
+        self.clear_geometry_outputs()
+        self.outputs["summary"].set_entries(
+            [("text", "已载入变换后的度规。点击“计算曲率”继续计算几何量。")]
+        )
+        self.status_var.set("已将变换后的度规载入曲率页")
+
     def clear_geometry_outputs(self) -> None:
         for key in ("summary", "christoffel", "riemann", "ricci", "scalars"):
             self.outputs[key].clear()
@@ -702,6 +912,53 @@ class GRCalculatorApp:
         self.outputs["ricci"].set_entries(tensor_entries(result.ricci))
         self.outputs["scalars"].set_entries(self.scalar_entries(result))
         self.status_var.set(f"计算完成，用时 {result.elapsed_seconds:.2f} 秒")
+
+    def transform_entries(
+        self, result: CoordinateTransformResult
+    ) -> list[tuple[str, str] | tuple[str, str, str]]:
+        entries: list[tuple[str, str] | tuple[str, str, str]] = []
+        if result.direction == "forward":
+            entries.append(("heading", "输入的正变换 y(x)"))
+            for new_coord, expression in zip(result.new_coords, result.forward_map):
+                entries.append(
+                    (
+                        "formula",
+                        rf"{sp.latex(new_coord)} = {latex_expression(expression)}",
+                        f"{new_coord} = {text_expression(expression)}",
+                    )
+                )
+
+            entries.append(("heading", "自动求得的逆变换 x(y)"))
+        else:
+            entries.append(("heading", "输入的逆变换 x(y)"))
+            entries.append(("text", "本次未自动求正变换，直接使用用户输入的逆变换。"))
+
+        for old_coord, expression in zip(result.old_coords, result.inverse_map):
+            entries.append(
+                (
+                    "formula",
+                    rf"{sp.latex(old_coord)} = {latex_expression(expression)}",
+                    f"{old_coord} = {text_expression(expression)}",
+                )
+            )
+
+        entries.extend(
+            matrix_component_entries(
+                result.jacobian,
+                heading=r"Jacobian 矩阵 Jμa = ∂xμ/∂ya",
+                symbol="J",
+            )
+        )
+        entries.extend(
+            matrix_component_entries(
+                result.metric,
+                heading=f"新度规矩阵 g'μν ({result.metric.rows} x {result.metric.cols})",
+                symbol="g'",
+            )
+        )
+        entries.append(("heading", "可载入的矩阵文本"))
+        entries.append(("text", self.last_transform_metric_text or metric_matrix_to_input_text(result.metric)))
+        return entries
 
     def scalar_entries(
         self, result: GeometryResult
