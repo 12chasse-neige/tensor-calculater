@@ -12,3 +12,5 @@ dist/
 build/
 *.egg-info/
 AGENTS.md
+native/.build/
+native/.swiftpm/

@@ -1,0 +1,8 @@
+add_library(tensor-core STATIC src/expression.cpp src/rational.cpp src/input.cpp src/geometry.cpp)
+target_include_directories(tensor-core PUBLIC include)
+target_include_directories(tensor-core SYSTEM PUBLIC ${symengine_SOURCE_DIR} ${symengine_BINARY_DIR} ${GMP_INCLUDE_DIR})
+target_link_libraries(tensor-core PUBLIC symengine nlohmann_json::nlohmann_json)
+target_compile_options(tensor-core PRIVATE -Wall -Wextra -Wpedantic)
+add_executable(tensor-worker src/worker.cpp)
+target_link_libraries(tensor-worker PRIVATE tensor-core)
+install(TARGETS tensor-worker RUNTIME DESTINATION bin)

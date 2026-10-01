@@ -1,104 +1,199 @@
-# GR Tensor Calculator
+# Tensor Calculator for macOS
 
-这是一个纯 Python / SymPy 的广义相对论符号计算 GUI。它可以从用户输入的度规计算
-非零的 Christoffel 联络、Riemann 张量、Ricci 张量、Ricci 标量和
-Kretschmann 标量，也可以把用户输入的几何表达式或拉格朗日量/密度在
-`g_{\mu\nu}=\eta_{\mu\nu}+\epsilon h_{\mu\nu}` 下展开到二阶。
+A native macOS app for exact symbolic calculations from a coordinate metric.
+The interface uses SwiftUI, an AppKit metric editor, and native SwiftMath
+typesetting. A separate C++20 worker uses **SymEngine 0.14.0** to calculate:
 
-## 运行
+- Inverse metric and Christoffel symbols
+- Riemann and Ricci tensors
+- Ricci scalar and Kretschmann scalar
 
-项目环境保存在当前目录的 `.venv` 中：
+The native app contains only the tensor calculation workflow. Its runtime
+does not require Python, Homebrew, a terminal, or an internet connection.
+The obsolete Python application has been removed. Python scripts under `scripts/` and `tests/` are development tools only.
 
-**Linux / macOS:**
-```bash
-./run_ui.sh
+## Download version 0.1.0
+
+Download the Apple Silicon app from the [v0.1.0 release](https://github.com/12chasse-neige/tensor-calculater/releases/tag/v0.1.0).
+Extract the ZIP and move **Tensor Calculator.app** to Applications. The binary
+requires macOS 15 or later and is signed ad hoc; it has not been notarized by
+Apple. The release includes SHA-256 checksums and [release notes](docs/releases/v0.1.0.md).
+
+## Build and run
+
+The current bundle requires macOS 15 or later. Building requires Xcode or its
+command-line tools with Swift 5.9+,
+CMake 3.24+, GMP, and Python 3 for the development packaging script. Network
+access is needed on the first build to fetch the pinned dependencies.
+
+```sh
+brew install cmake ninja gmp
+./scripts/build_macos.sh
+open "dist/Tensor Calculator.app"
 ```
 
-**Windows:**
-```cmd
-run_ui.bat
-```
+`./run_ui.sh` opens the built app, building it first if necessary. Re-run the
+build script after editing source. The build uses the current Mac's CPU
+architecture. It bundles and relinks non-system libraries, includes third-party
+license notices, and signs the local app ad hoc. The minimum macOS version is
+derived from the UI, worker, and bundled libraries (the installed GMP build
+currently requires macOS 15). To use a Developer ID identity,
+set `CODE_SIGN_IDENTITY` when building. Notarization is a separate release step.
 
-如果需要重建环境：
+## Using the app
 
-**Linux / macOS:**
-```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-```
+Choose a preset or enter coordinates, constants, unknown functions, and a
+**symmetric covariant metric** in the same coordinate order. Select the desired
+outputs and click Calculate (`⌘↩`). Cancel (`⌘.`) stops the worker; the app remains
+available for another calculation.
 
-**Windows:**
-```cmd
-python -m venv .venv
-.venv\Scripts\python -m pip install -r requirements.txt
-```
-
-## 曲率计算输入
-
-- 坐标符号：用逗号分隔，例如 `t, r, theta, phi`。
-- 标量常量：用逗号分隔，例如 `M, G, c`。
-- 自定义函数：写成坐标的函数，例如 `a(t)` 或 `Phi(t, r)`。
-- 度规矩阵：每行输入一个矩阵行，例如 `[g00, g01, ...]`；旧的
-  `[[...], [...]]` 外层括号写法仍然兼容。
-
-表达式支持接近手写公式的写法，例如 `2M/r`、`r^2`、`sin(theta)`、
-`sqrt(...)`、`diff(...)`、`Matrix(...)` 和 `diag(...)`。
-
-内置示例包括：
-
-- 球坐标下的平直时空
-- Schwarzschild 度规
-- Reissner-Nordstrom 度规
-- Kerr 度规（Boyer-Lindquist 坐标）
-- FLRW 度规
-
-Schwarzschild 示例：
+Schwarzschild, in geometric units:
 
 ```text
-坐标符号: t, r, theta, phi
-标量常量: M
-自定义函数:
-度规矩阵:
+Coordinates: t, r, theta, phi
+Constants: M
+Functions:
+Metric:
 [-(1 - 2M/r), 0, 0, 0],
 [0, 1/(1 - 2M/r), 0, 0],
 [0, 0, r^2, 0],
 [0, 0, 0, r^2*sin(theta)^2]
 ```
 
-## 功能说明
+Built-in presets: spherical-coordinate flat spacetime, Schwarzschild,
+Reissner–Nordström, Kerr, FLRW with arbitrary `a(t)`, and a two-sphere.
+Results can be searched and copied as expressions or LaTeX. Save/open
+`.tensorcalc` documents with native File menu commands. Documents preserve the
+inputs that produced the saved results; editing inputs marks those results as
+belonging to the previous calculation.
 
-- 曲率计算使用本地 SymPy 引擎，不依赖 Mathematica notebook 或 EinsteinPy。
-- Riemann 张量约定为
-  `R^lambda_{mu nu kappa} = Gamma^lambda_{mu nu,kappa} - Gamma^lambda_{mu kappa,nu} + Gamma^lambda_{alpha kappa} Gamma^alpha_{mu nu} - Gamma^lambda_{alpha nu} Gamma^alpha_{mu kappa}`，
-  即代码中的索引顺序 `(lambda, mu, nu, kappa)` 表示
-  `R^lambda_{mu nu kappa}`。
-- 引擎会缓存偏导数、利用 Christoffel 和 Riemann 的对称性，并只保存非零分量。
-- UI 的 LaTeX 输出使用较小的 STIX 数学字体渲染，适合窗口模式阅读。
-- 扰动展开页支持自定义几何表达式。可以输入单个张量，例如：
+### Input grammar
+
+- ASCII symbol names; explicitly declare constants and unknown functions.
+- Exact integers, fractions, decimal numbers, and scientific notation. Decimal
+  literals are interpreted as exact rationals (for example `0.1 = 1/10`).
+- `+`, `-`, `*`, `/`, `^` or `**`, parentheses, and implicit multiplication such
+  as `2M` and `2(r+1)`.
+- `sin`, `cos`, `tan`, `cot`, `sec`, `csc`, `asin`, `acos`, `atan`, `sinh`,
+  `cosh`, `tanh`, `exp`, `sqrt`, `log`/`ln`, `Abs`/`abs`, and constants `pi`,
+  `E`, `I`.
+- Unknown functions declared as `a(t)` or `Phi(t,r)`. Function calls respect
+  their declared coordinate dependencies and preserve symbolic derivatives.
+- `diff(expression, coordinate[, order])`, mixed derivatives such as
+  `diff(Phi(t,r),t,r)`, `Derivative(...)`, and `Rational(p,q)`.
+- A row per line, comma-separated rows, nested `[[...],[...]]`,
+  `Matrix([[...],[...]])`, or `diag(g00,g11,...)`.
+
+This is a restricted mathematical grammar, not arbitrary Python syntax. The
+worker accepts 1–8 coordinates. Inputs have bounded nesting, literal size,
+numeric powers, and derivative orders so malformed expressions can be rejected
+before excessive work. Singular, asymmetric, undefined, and nonfinite metrics
+return input errors. Symbolically conditional inverses apply only where the
+metric and expressions are defined.
+
+## Mathematical conventions and simplification
+
+The native engine preserves the original calculator's convention:
 
 ```text
-Ricci
+R^rho_{sigma mu nu} = d_nu Gamma^rho_{mu sigma}
+                   - d_mu Gamma^rho_{nu sigma}
+                   + Gamma^rho_{nu alpha} Gamma^alpha_{mu sigma}
+                   - Gamma^rho_{mu alpha} Gamma^alpha_{nu sigma}
+
+Ricci_{sigma nu} = sum_rho R^rho_{sigma rho nu}
 ```
 
-也可以输入拉格朗日量/密度，例如：
+This convention gives `R = -2/L^2` for a two-sphere of radius `L`. Component
+indices in the worker protocol are zero-based; the app displays coordinate
+labels. Inverse metric, connection, Riemann, and Ricci index positions are
+`uu`, `ull`, `ulll`, and `ll`, where `u` means upper and `l` means lower.
 
-```text
-sqrtg*(gInv*Ricci + alpha*R^2 + beta*Ricci2 + gamma*K + V)
+Only **proven symbolic zeros** are omitted. Numerical samples never establish
+a symbolic zero. Bounded rational/trigonometric normalization can leave
+mathematically zero components unresolved; such expressions remain visible.
+The engine calculates only dependencies needed by the selected outputs and
+caches metric/expression derivatives during each job. Kerr's recognized
+Kretschmann invariant uses the existing closed-form shortcut, explicitly
+reported in the result. Other selected Kerr tensors use the general algorithms
+and can produce large expressions.
+
+## Development and verification
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$(brew --prefix)"
+cmake --build build --target tensor-worker --parallel
+python3 -m venv .venv
+.venv/bin/python -m pip install sympy==1.14.0
+.venv/bin/python -m unittest discover -s tests -v
+swift test --package-path native
 ```
 
-其中 `sqrtg` 也可写作 `sqrt(-g)`；`R` 是 Ricci 标量，`Ricci` 是
-Ricci 张量，`Riemann` 是 Riemann 张量，`g`/`gInv`/`gUU` 是逆度规，
-`gCov`/`gDD` 是协变度规。
-`gInv*Ricci` 会按 `g^{\mu\nu}R_{\mu\nu}=R` 展开。
-`Ricci2`/`Ricci^2` 表示 `R_{\mu\nu}R^{\mu\nu}`，
-`K`/`Riemann2`/`Riemann^2` 表示
-`R_{\mu\nu\rho\sigma}R^{\mu\nu\rho\sigma}`。其它名字会按用户标量或常量处理。
-展开采用 `η=(-,+,+,+)`，重复指标用 `η` 升降并求和；二阶 `R` 的 bulk 形式会按
-舍去总导数后的表达式展示。
+SymPy is a **test-only** dependency. Mathematical tests use analytic invariants
+and an independent SymPy implementation to check metric inverses, metric
+compatibility, tensor symmetries, the Bianchi identity, Ricci contractions,
+non-diagonal metrics, arbitrary-function derivatives, and exact-zero
+regressions. Native tests cover streaming results, document provenance,
+typesetting, and cancellation/recovery.
 
-## 注意
+After packaging, also run the native model against the bundled engine:
 
-复杂非对角度规的符号化简仍可能比对角度规慢。建议先从内置示例开始，再逐步加入新的常量、
-函数或非对角项。默认会计算 Kretschmann 标量；内置 Kerr 度规会使用已知闭式表达式，
-但 Riemann 分量本身仍需要较多符号计算。如果只是检查低阶张量分量，可以在 UI 中关闭
-Kretschmann 标量。
+```sh
+TENSOR_INTEGRATION_WORKER_PATH="$PWD/dist/Tensor Calculator.app/Contents/MacOS/tensor-worker" \
+  swift test --package-path native
+```
+
+Set `TENSOR_SNAPSHOT_DIR` to an output directory in that command to render the
+metric editor, formula results, and long-expression preview for visual checks.
+
+For an unbundled development UI, set `TENSOR_WORKER_PATH` to the absolute path
+of `build/core/tensor-worker` before running the Swift executable.
+
+### Source layout
+
+- `core/`: reusable C++ tensor library and JSON-lines worker
+- `native/`: Swift macOS app and native integration tests
+- `tests/`: independent mathematical/protocol reference checks
+- `scripts/`: reproducible build and app packaging
+
+The worker accepts a version-1 JSON request on each stdin line and writes
+progress, result, or error events to stdout. The native app starts a worker for
+each calculation; cooperative cancellation is backed by forced termination
+when an algebra operation does not return promptly. See
+[the protocol specification](docs/worker-protocol.md) for message formats.
+
+
+### LaTeX input and sign controls
+
+The metric editor accepts bracketed rows, `diag(...)`, or LaTeX `matrix`,
+`pmatrix`, and `bmatrix` environments. Use **Use LaTeX** to convert an existing
+matrix. The preview next to the editor shows the selected overall metric sign.
+For example, with coordinates `theta, phi` and constant `L`:
+
+```latex
+\begin{pmatrix}
+L^{2} & 0 \\
+0 & L^{2}\sin^{2}{\theta}
+\end{pmatrix}
+```
+
+Supported input includes fractions (`\frac{a}{b}`), square roots (`\sqrt{a}`),
+Greek symbol names, explicit function arguments (`\sin{\theta}` or
+`\sin(\theta)`), powers, and `\cdot` / `\times`. Unsupported commands produce
+an input error. This is a mathematical subset of LaTeX, not a TeX interpreter.
+
+The metric buttons show **(− + + +)** and **(+ − − −)** for four-dimensional
+spacetime. Enter the matrix in the first convention; the second multiplies all
+entries by −1. For other dimensions, the buttons show **g** and **−g**.
+The two-sphere preset is positive definite. Choosing another preset preserves
+both sign choices, and the highlighted row follows the selected preset.
+
+The **Riemann** buttons display LaTeX and select either derivative order; the
+complete definition is displayed below them. Christoffel and Riemann indices
+use separate upper and lower slots, such as `\Gamma^{\alpha}{}_{\beta\,\gamma}`
+and `R^{\mu}{}_{\nu\,\rho\,\sigma}`. Component order is preserved, and Copy
+LaTeX includes the component label and its expression. Ricci always contracts `R^a_bad`. Reversing the
+curvature convention negates Riemann, Ricci, and the Ricci scalar, while leaving
+Christoffel symbols and the Kretschmann scalar unchanged. The default preserves
+the previous calculator convention. Both selections are saved in documents;
+older documents open with the original defaults.

@@ -1,3 +1,0 @@
-matplotlib==3.10.9
-pillow==12.2.0
-sympy==1.14.0
