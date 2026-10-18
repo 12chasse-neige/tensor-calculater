@@ -20,10 +20,23 @@ std::string trim(const std::string& s) {
 }
 const std::set<std::string> reserved = {
     "sin", "cos", "tan", "cot", "sec", "csc", "asin", "acos", "atan",
-    "sinh", "cosh", "tanh", "exp", "sqrt", "log", "ln", "Abs", "abs",
+    "arcsin", "arccos", "arctan", "sinh", "cosh", "tanh",
+    "exp", "sqrt", "log", "ln", "Abs", "abs",
     "Rational", "Integer", "Float", "S", "pi", "E", "I", "diff",
     "Derivative", "Matrix", "diag", "eye", "zeros", "ones"
 };
+std::string builtin_function(std::string name) {
+    for (auto& c : name) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (name == "arcsin") name = "asin";
+    if (name == "arccos") name = "acos";
+    if (name == "arctan") name = "atan";
+    if (name == "ln") name = "log";
+    static const std::set<std::string> names = {
+        "sin", "cos", "tan", "cot", "sec", "csc", "asin", "acos", "atan",
+        "sinh", "cosh", "tanh", "exp", "sqrt", "log", "abs"
+    };
+    return names.count(name) ? name : "";
+}
 void identifier(const std::string& name) {
     static const std::regex valid("^[A-Za-z_][A-Za-z_0-9]*$");
     if (!std::regex_match(name, valid) || reserved.count(name))
@@ -129,19 +142,22 @@ class Parser {
         auto left = primary();
         if (token.kind == Kind::Power) {
             next(); auto exponent = unary();
-            if (se::is_a<se::Integer>(*exponent)) {
-                const auto value = se::down_cast<const se::Integer&>(*exponent).as_integer_class();
-                if (value > 1000 || value < -1000) error("Integer power must be between -1000 and 1000");
-                if (exact_zero(left) && value < 0) error("Division by zero");
-                if (se::is_a_Number(*left)) {
-                    auto count = se::down_cast<const se::Integer&>(*exponent).as_int();
-                    if (left->__str__().size() * static_cast<size_t>(std::abs(count)) > 10000)
-                        error("Numeric power would create more than 10000 digits");
-                }
-            }
-            left = se::pow(left, exponent);
+            left = raise(left, exponent);
         }
         return left;
+    }
+    Expr raise(const Expr& base, const Expr& exponent) {
+        if (se::is_a<se::Integer>(*exponent)) {
+            const auto value = se::down_cast<const se::Integer&>(*exponent).as_integer_class();
+            if (value > 1000 || value < -1000) error("Integer power must be between -1000 and 1000");
+            if (exact_zero(base) && value < 0) error("Division by zero");
+            if (se::is_a_Number(*base)) {
+                auto count = se::down_cast<const se::Integer&>(*exponent).as_int();
+                if (base->__str__().size() * static_cast<size_t>(std::abs(count)) > 10000)
+                    error("Numeric power would create more than 10000 digits");
+            }
+        }
+        return se::pow(base, exponent);
     }
     Expr function(const std::string& name, const std::vector<Expr>& args) {
         auto arity = [&](size_t n) { if (args.size() != n) error(name + " requires " + std::to_string(n) + " argument(s)"); };
@@ -175,25 +191,37 @@ class Parser {
             }
             return se::function_symbol(name, args);
         }
+        const auto builtin = builtin_function(name);
+        if (builtin.empty()) error("Undefined function: " + name + "; declare unknown functions in Functions, for example " + name + "(" + input.names.front() + ")");
         arity(1);
         auto a = args[0];
-        if (name == "sin") return se::sin(a);
-        if (name == "cos") return se::cos(a);
-        if (name == "tan") return se::tan(a);
-        if (name == "cot") return se::cot(a);
-        if (name == "sec") return se::sec(a);
-        if (name == "csc") return se::csc(a);
-        if (name == "asin") return se::asin(a);
-        if (name == "acos") return se::acos(a);
-        if (name == "atan") return se::atan(a);
-        if (name == "sinh") return se::sinh(a);
-        if (name == "cosh") return se::cosh(a);
-        if (name == "tanh") return se::tanh(a);
-        if (name == "exp") return se::exp(a);
-        if (name == "sqrt") return se::sqrt(a);
-        if (name == "log" || name == "ln") return se::log(a);
-        if (name == "Abs" || name == "abs") return se::abs(a);
+        if (builtin == "sin") return se::sin(a);
+        if (builtin == "cos") return se::cos(a);
+        if (builtin == "tan") return se::tan(a);
+        if (builtin == "cot") return se::cot(a);
+        if (builtin == "sec") return se::sec(a);
+        if (builtin == "csc") return se::csc(a);
+        if (builtin == "asin") return se::asin(a);
+        if (builtin == "acos") return se::acos(a);
+        if (builtin == "atan") return se::atan(a);
+        if (builtin == "sinh") return se::sinh(a);
+        if (builtin == "cosh") return se::cosh(a);
+        if (builtin == "tanh") return se::tanh(a);
+        if (builtin == "exp") return se::exp(a);
+        if (builtin == "sqrt") return se::sqrt(a);
+        if (builtin == "log") return se::log(a);
+        if (builtin == "abs") return se::abs(a);
         error("Undefined function: " + name);
+    }
+    Expr call(const std::string& name) {
+        if (token.kind != Kind::Left) error("Use parentheses for " + name + ", for example " + name + "(" + input.names.front() + ")");
+        next(); std::vector<Expr> args;
+        if (token.kind != Kind::Right) {
+            args.push_back(sum());
+            while (token.kind == Kind::Comma) { next(); args.push_back(sum()); }
+        }
+        if (token.kind != Kind::Right) error("Expected closing parenthesis");
+        next(); return function(name, args);
     }
     Expr primary() {
         if (token.kind == Kind::Number) { auto value = token.text; next(); return number(value); }
@@ -202,18 +230,22 @@ class Parser {
         }
         if (token.kind == Kind::Name) {
             auto name = token.text; next();
-            // A declared scalar next to parentheses means multiplication.
-            if (token.kind == Kind::Left && !input.symbols.count(name) && name != "pi" && name != "E" && name != "I") {
-                next(); std::vector<Expr> args;
-                if (token.kind != Kind::Right) {
-                    args.push_back(sum());
-                    while (token.kind == Kind::Comma) { next(); args.push_back(sum()); }
+            // Elementary functions are available without declarations. Preserve
+            // exact user declarations, including case and a scalar named e.
+            if (input.functions.count(name)) return call(name);
+            if (!input.symbols.count(name) && !builtin_function(name).empty()) {
+                if (token.kind == Kind::Power) {
+                    next(); auto exponent = unary();
+                    return raise(call(name), exponent); // sin^2(x) = sin(x)^2
                 }
-                if (token.kind != Kind::Right) error("Expected closing parenthesis");
-                next(); return function(name, args);
+                return call(name);
+            }
+            // A declared scalar next to parentheses means multiplication.
+            if (token.kind == Kind::Left && !input.symbols.count(name) && name != "pi" && name != "E" && name != "e" && name != "I") {
+                return call(name);
             }
             if (name == "pi") return se::pi;
-            if (name == "E") return se::E;
+            if (name == "E" || (name == "e" && !input.symbols.count(name))) return se::E;
             if (name == "I") return se::I;
             auto found = input.symbols.find(name);
             if (found == input.symbols.end()) error("Undefined symbol: " + name + "; declare it as a constant or function");

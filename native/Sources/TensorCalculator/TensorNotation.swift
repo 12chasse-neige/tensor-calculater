@@ -16,14 +16,14 @@ enum TensorNotation {
             }
         }
         return symbol + runs.enumerated().map { index, run in
-            (index == 0 ? "" : "{}") + (run.upper ? "^{" : "_{")
-                + run.labels.joined(separator: "\\,") + "}"
+            (index == 0 ? "" : " {}") + (run.upper ? "^{" : "_{")
+                + run.labels.joined(separator: " ") + "}"
         }.joined()
     }
 
-    static let christoffel = #"\Gamma^{\alpha}{}_{\beta\,\gamma}"#
-    static let riemann = #"R^{\mu}{}_{\nu\,\rho\,\sigma}"#
-    static let ricciContraction = #"R_{\nu\,\sigma}=R^{\mu}{}_{\nu\,\mu\,\sigma}"#
+    static let christoffel = #"\Gamma^{\alpha} {}_{\beta \gamma}"#
+    static let riemann = #"R^{\mu} {}_{\nu \rho \sigma}"#
+    static let ricciContraction = #"R_{\nu \sigma}=R^{\mu} {}_{\nu \mu \sigma}"#
 }
 
 enum RiemannConvention: Int, CaseIterable, Identifiable {
@@ -36,13 +36,13 @@ enum RiemannConvention: Int, CaseIterable, Identifiable {
     }
     var buttonLatex: String {
         self == .derivativeLastFirst
-            ? #"\partial_{\sigma}\Gamma^{\mu}{}_{\rho\,\nu}-\partial_{\rho}\Gamma^{\mu}{}_{\sigma\,\nu}"#
-            : #"\partial_{\rho}\Gamma^{\mu}{}_{\sigma\,\nu}-\partial_{\sigma}\Gamma^{\mu}{}_{\rho\,\nu}"#
+            ? #"\partial_{\sigma}\Gamma^{\mu} {}_{\rho \nu}-\partial_{\rho}\Gamma^{\mu} {}_{\sigma \nu}"#
+            : #"\partial_{\rho}\Gamma^{\mu} {}_{\sigma \nu}-\partial_{\sigma}\Gamma^{\mu} {}_{\rho \nu}"#
     }
     var definitionLatex: String {
         TensorNotation.riemann + "=" + buttonLatex + (self == .derivativeLastFirst
-            ? #"+\Gamma^{\mu}{}_{\sigma\,\lambda}\Gamma^{\lambda}{}_{\rho\,\nu}-\Gamma^{\mu}{}_{\rho\,\lambda}\Gamma^{\lambda}{}_{\sigma\,\nu}"#
-            : #"+\Gamma^{\mu}{}_{\rho\,\lambda}\Gamma^{\lambda}{}_{\sigma\,\nu}-\Gamma^{\mu}{}_{\sigma\,\lambda}\Gamma^{\lambda}{}_{\rho\,\nu}"#)
+            ? #"+\Gamma^{\mu} {}_{\sigma \lambda}\Gamma^{\lambda} {}_{\rho \nu}-\Gamma^{\mu} {}_{\rho \lambda}\Gamma^{\lambda} {}_{\sigma \nu}"#
+            : #"+\Gamma^{\mu} {}_{\rho \lambda}\Gamma^{\lambda} {}_{\sigma \nu}-\Gamma^{\mu} {}_{\sigma \lambda}\Gamma^{\lambda} {}_{\rho \nu}"#)
     }
     init?(resultConvention: String) {
         if resultConvention.hasPrefix("R^rho_{sigma mu nu} = d_mu") { self = .derivativeFirstFirst }

@@ -28,7 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func showHelp() {
         let alert = NSAlert()
         alert.messageText = "Tensor calculation"
-        alert.informativeText = "Enter a symmetric covariant metric gᵢⱼ in the coordinate order shown. Write one bracketed row per line; use * for multiplication and ^ or ** for powers. Define constants and unknown functions before using them.\n\nComponents use coordinate labels, with index positions shown by superscripts and subscripts. Only components proved to be zero symbolically are omitted. The exact curvature sign convention accompanies each result.\n\nCalculate: ⌘↩   Cancel: ⌘.   Save: ⌘S\n\nChanging the metric keeps the previous result visible until a new calculation completes. Results are marked when their inputs no longer match."
+        alert.informativeText = "Enter a symmetric covariant metric gᵢⱼ in the coordinate order shown. Write one bracketed row per line; use * for multiplication and ^ or ** for powers. Define constants and unknown functions before using them. Elementary functions such as sin(x), cos(x), exp(x), sqrt(x), and log(x) need no declaration. Use e^x or E^x for the exponential and sin^2(x) for sin(x)^2.\n\nComponents use coordinate labels, with index positions shown by superscripts and subscripts. Only components proved to be zero symbolically are omitted. The exact curvature sign convention accompanies each result.\n\nCalculate: ⌘↩   Cancel: ⌘.   Save: ⌘S\n\nChanging the metric keeps the previous result visible until a new calculation completes. Results are marked when their inputs no longer match."
         alert.addButton(withTitle: "OK")
         alert.runModal()
     }

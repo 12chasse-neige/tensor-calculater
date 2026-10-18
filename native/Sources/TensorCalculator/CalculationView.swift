@@ -159,120 +159,144 @@ private struct InputView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Define your spacetime").font(.title.weight(.semibold))
-                    Text("Enter the covariant metric in coordinate order, then choose the quantities to calculate.")
-                        .foregroundStyle(.secondary)
-                }
-                GroupBox("Coordinates and symbols") {
-                    Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 12) {
-                        GridRow {
-                            Text("Coordinates")
-                            TextField("t, r, theta, phi", text: $inputs.coordinates)
-                        }
-                        GridRow {
-                            Text("Constants")
-                            TextField("M, a, k", text: $inputs.scalars)
-                        }
-                        GridRow {
-                            Text("Functions")
-                            TextField("a(t), Phi(t,r)", text: $inputs.functions)
-                        }
+        GeometryReader { geometry in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Define your spacetime").font(.title.weight(.semibold))
+                        Text("Enter the covariant metric in coordinate order, then choose the quantities to calculate.")
+                            .foregroundStyle(.secondary)
                     }
-                    .textFieldStyle(.roundedBorder)
-                    .padding(8)
-                }
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Metric").font(.headline)
-                        InlineMathFormula(latex: #"g_{ij}"#, fontSize: 18)
-                            .accessibilityElement(children: .ignore)
-                            .accessibilityLabel("g subscript i j")
-                        Spacer()
-                        Button("Use LaTeX") {
-                            if let latex = try? MetricNotation.latex(inputs.metric) { inputs.metric = latex }
-                        }
-                        .disabled((try? MetricNotation.rows(inputs.metric)) == nil)
-                        .help("Convert the metric to a LaTeX matrix")
-                    }
-                    HStack(alignment: .top, spacing: 16) {
-                        MetricEditor(text: $inputs.metric)
-                            .frame(height: CGFloat(min(180, max(95, inputs.coordinateNames.count * 25 + 24))))
-                            .frame(maxWidth: .infinity)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                            .overlay { RoundedRectangle(cornerRadius: 8).stroke(.separator, lineWidth: 1) }
-                        if let preview = try? MetricNotation.latex(inputs.metric) {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Preview · " + inputs.coordinateNames.joined(separator: ", "))
-                                    .font(.caption).foregroundStyle(.secondary)
-                                MathFormula(latex: "g_{ij} = " + (inputs.metricSign == -1 ? "-" : "") + preview,
-                                            expression: "Covariant metric", fontSize: 19, showExpression: false)
+                    GroupBox("Coordinates and symbols") {
+                        Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 12) {
+                            GridRow {
+                                Text("Coordinates")
+                                TextField("t, r, theta, phi", text: $inputs.coordinates)
                             }
-                            .padding(12)
-                            .frame(width: 280, alignment: .leading)
-                            .frame(minHeight: 70, alignment: .topLeading)
-                            .background(.background, in: RoundedRectangle(cornerRadius: 8))
+                            GridRow {
+                                Text("Constants")
+                                TextField("M, a, k", text: $inputs.scalars)
+                            }
+                            GridRow {
+                                Text("Functions")
+                                TextField("a(t), Phi(t,r)", text: $inputs.functions)
+                            }
                         }
-                    }
-                    Text("Bracketed rows or LaTeX matrix / pmatrix / bmatrix. LaTeX supports \\frac{a}{b}, \\sqrt{a}, \\sin{theta}^{2}, and Greek symbols.")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                GroupBox("Sign conventions") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack(spacing: 12) {
-                            Text("Metric").frame(width: 70, alignment: .leading)
-                            ConventionButton(text: inputs.coordinateNames.count == 4 ? "(− + + +)" : "g",
-                                             accessibilityLabel: "Metric: minus plus plus plus; use entered matrix",
-                                             selected: inputs.metricSign != -1) { inputs.metricSign = 1 }
-                            ConventionButton(text: inputs.coordinateNames.count == 4 ? "(+ − − −)" : "−g",
-                                             accessibilityLabel: "Metric: plus minus minus minus; reverse all signs",
-                                             selected: inputs.metricSign == -1) { inputs.metricSign = -1 }
-                        }
-                        Text(inputs.coordinateNames.count == 4
-                             ? "Enter the matrix in the (− + + +) convention. Choosing (+ − − −) reverses all entries."
-                             : "Use the entered matrix g or reverse all its signs with −g.")
+                        .textFieldStyle(.roundedBorder)
+                        .padding(8)
+                        Text("Only declare unknown functions here. sin(x), cos(x), exp(x), e^x, sqrt(x), and log(x) are built in.")
                             .font(.caption).foregroundStyle(.secondary)
-                        HStack(spacing: 12) {
-                            Text("Riemann").frame(width: 70, alignment: .leading)
-                            ForEach(RiemannConvention.allCases) { convention in
-                                ConventionButton(latex: convention.buttonLatex,
-                                                 accessibilityLabel: convention.accessibilityLabel,
-                                                 selected: (inputs.riemannSign ?? 1) == convention.rawValue) {
-                                    inputs.riemannSign = convention.rawValue
-                                }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 8)
+                            .padding(.bottom, 6)
+                    }
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Metric").font(.headline)
+                            InlineMathFormula(latex: #"g_{ij}"#, fontSize: 18)
+                                .accessibilityElement(children: .ignore)
+                                .accessibilityLabel("g subscript i j")
+                            Spacer()
+                            Button("Use LaTeX") {
+                                if let latex = try? MetricNotation.latex(inputs.metric) { inputs.metric = latex }
+                            }
+                            .disabled((try? MetricNotation.rows(inputs.metric)) == nil)
+                            .help("Convert the metric to a LaTeX matrix")
+                        }
+                        let editorHeight = max(CGFloat(inputs.coordinateNames.count * 25 + 24), min(320, geometry.size.height * 0.25))
+                        if geometry.size.width >= 800 {
+                            HStack(alignment: .top, spacing: 16) {
+                                metricEditor(height: editorHeight)
+                                    .frame(maxWidth: .infinity)
+                                metricPreview
+                                    .frame(width: (geometry.size.width - 72) * 0.44)
+                            }
+                        } else {
+                            VStack(alignment: .leading, spacing: 12) {
+                                metricEditor(height: editorHeight)
+                                metricPreview
                             }
                         }
-                        MathFormula(latex: selectedConvention.definitionLatex,
-                                    expression: selectedConvention.accessibilityLabel, fontSize: 17, showExpression: false)
-                        MathFormula(latex: TensorNotation.ricciContraction,
-                                    expression: "Ricci contraction", fontSize: 16, showExpression: false)
-                    }.padding(8)
-                }
-                GroupBox("Calculate") {
-                    LazyVGrid(columns: [GridItem(.flexible(), alignment: .leading), GridItem(.flexible(), alignment: .leading)], alignment: .leading, spacing: 12) {
-                        ForEach(CalculationOutput.allCases) { output in
-                            Toggle(output.title, isOn: Binding(
-                                get: { inputs.outputs.contains(output.rawValue) },
-                                set: { selected in
-                                    if selected {
-                                        if !inputs.outputs.contains(output.rawValue) { inputs.outputs.append(output.rawValue) }
-                                    } else { inputs.outputs.removeAll { $0 == output.rawValue } }
-                                }
-                            ))
-                        }
+                        Text("Bracketed rows or LaTeX matrix / pmatrix / bmatrix. LaTeX supports \\frac{a}{b}, \\sqrt{a}, \\sin{theta}^{2}, and Greek symbols.")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
-                    .toggleStyle(.checkbox)
-                    .padding(8)
+                    GroupBox("Sign conventions") {
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack(spacing: 12) {
+                                Text("Metric").frame(width: 70, alignment: .leading)
+                                ConventionButton(text: inputs.coordinateNames.count == 4 ? "(− + + +)" : "g",
+                                                 accessibilityLabel: "Metric: minus plus plus plus; use entered matrix",
+                                                 selected: inputs.metricSign != -1) { inputs.metricSign = 1 }
+                                ConventionButton(text: inputs.coordinateNames.count == 4 ? "(+ − − −)" : "−g",
+                                                 accessibilityLabel: "Metric: plus minus minus minus; reverse all signs",
+                                                 selected: inputs.metricSign == -1) { inputs.metricSign = -1 }
+                            }
+                            Text(inputs.coordinateNames.count == 4
+                                 ? "Enter the matrix in the (− + + +) convention. Choosing (+ − − −) reverses all entries."
+                                 : "Use the entered matrix g or reverse all its signs with −g.")
+                                .font(.caption).foregroundStyle(.secondary)
+                            HStack(spacing: 12) {
+                                Text("Riemann").frame(width: 70, alignment: .leading)
+                                ForEach(RiemannConvention.allCases) { convention in
+                                    ConventionButton(latex: convention.buttonLatex,
+                                                     accessibilityLabel: convention.accessibilityLabel,
+                                                     selected: (inputs.riemannSign ?? 1) == convention.rawValue) {
+                                        inputs.riemannSign = convention.rawValue
+                                    }
+                                }
+                            }
+                            MathFormula(latex: selectedConvention.definitionLatex,
+                                        expression: selectedConvention.accessibilityLabel, fontSize: 17, showExpression: false)
+                            MathFormula(latex: TensorNotation.ricciContraction,
+                                        expression: "Ricci contraction", fontSize: 16, showExpression: false)
+                        }.padding(8)
+                    }
+                    GroupBox("Calculate") {
+                        LazyVGrid(columns: [GridItem(.flexible(), alignment: .leading), GridItem(.flexible(), alignment: .leading)], alignment: .leading, spacing: 12) {
+                            ForEach(CalculationOutput.allCases) { output in
+                                Toggle(output.title, isOn: Binding(
+                                    get: { inputs.outputs.contains(output.rawValue) },
+                                    set: { selected in
+                                        if selected {
+                                            if !inputs.outputs.contains(output.rawValue) { inputs.outputs.append(output.rawValue) }
+                                        } else { inputs.outputs.removeAll { $0 == output.rawValue } }
+                                    }
+                                ))
+                            }
+                        }
+                        .toggleStyle(.checkbox)
+                        .padding(8)
+                    }
+                    if let message = inputs.validationMessage {
+                        Label(message, systemImage: "info.circle").foregroundStyle(.secondary).font(.callout)
+                    }
                 }
-                if let message = inputs.validationMessage {
-                    Label(message, systemImage: "info.circle").foregroundStyle(.secondary).font(.callout)
-                }
+                .padding(28)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            .padding(28)
-            .frame(maxWidth: 1000, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+    }
+
+    private func metricEditor(height: CGFloat) -> some View {
+        MetricEditor(text: $inputs.metric)
+            .frame(height: height)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay { RoundedRectangle(cornerRadius: 8).stroke(.separator, lineWidth: 1) }
+    }
+
+    @ViewBuilder
+    private var metricPreview: some View {
+        if let preview = try? MetricNotation.latex(inputs.metric) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Preview · " + inputs.coordinateNames.joined(separator: ", "))
+                    .font(.caption).foregroundStyle(.secondary)
+                MathFormula(latex: "g_{ij} = " + (inputs.metricSign == -1 ? "-" : "") + preview,
+                            expression: "Covariant metric", fontSize: 22, showExpression: false)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, minHeight: 70, alignment: .topLeading)
+            .background(.background, in: RoundedRectangle(cornerRadius: 8))
+            .accessibilityIdentifier("metric-preview")
         }
     }
 }
@@ -310,23 +334,29 @@ private struct ResultBrowser: View {
                     ForEach(result.scalars) { scalar in ScalarCard(scalar: scalar) }
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 235), alignment: .leading)], spacing: 14) {
                         ForEach(result.tensors) { tensor in
-                            Button { navigate("tensor:" + tensor.key) } label: {
-                                VStack(alignment: .leading, spacing: 9) {
-                                    HStack {
-                                        Image(systemName: "square.stack.3d.up").foregroundStyle(.tint)
-                                        Spacer()
-                                        Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
+                            VStack(alignment: .leading, spacing: 14) {
+                                Button { navigate("tensor:" + tensor.key) } label: {
+                                    VStack(alignment: .leading, spacing: 9) {
+                                        HStack {
+                                            Image(systemName: "square.stack.3d.up").foregroundStyle(.tint)
+                                            Spacer()
+                                            Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
+                                        }
+                                        Text(tensor.name).font(.headline)
+                                        Text("\(tensor.components.count) stored components")
+                                            .font(.caption).foregroundStyle(.secondary)
                                     }
-                                    Text(tensor.name).font(.headline)
-                                    Text("\(tensor.components.count) stored components")
-                                        .font(.caption).foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .contentShape(Rectangle())
                                 }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(16)
-                                .background(.background, in: RoundedRectangle(cornerRadius: 10))
-                                .overlay { RoundedRectangle(cornerRadius: 10).stroke(.separator, lineWidth: 1) }
+                                .buttonStyle(.plain)
+                                tensorCopyButton(tensor, coordinates: result.coordinates)
+                                    .controlSize(.small)
                             }
-                            .buttonStyle(.plain)
+                            .padding(16)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(.background, in: RoundedRectangle(cornerRadius: 10))
+                            .overlay { RoundedRectangle(cornerRadius: 10).stroke(.separator, lineWidth: 1) }
                         }
                     }
                     if !result.warnings.isEmpty {
@@ -371,6 +401,9 @@ private struct ScalarCard: View {
             HStack {
                 Text(scalar.name).font(.headline)
                 Spacer()
+                CopyLatexButton(resultKey: scalar.key, help: "Copy the complete scalar equation as LaTeX") {
+                    scalar.latexBlock
+                }
                 CopyMenu(expression: scalar.expression, latex: scalar.latex)
             }
             MathFormula(latex: scalar.symbol + " = " + scalar.latex, expression: scalar.symbol + " = " + scalar.expression, fontSize: 26)
@@ -398,7 +431,11 @@ struct TensorComponentsView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 14) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(tensor.name).font(.largeTitle.weight(.semibold))
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(tensor.name).font(.largeTitle.weight(.semibold))
+                        Spacer()
+                        tensorCopyButton(tensor, coordinates: coordinates)
+                    }
                     Text("Rank \(tensor.rank) · Shape " + tensor.shape.map(String.init).joined(separator: " × ") + " · \(filtered.count) of \(tensor.components.count) components")
                         .font(.callout).foregroundStyle(.secondary)
                     if tensor.key == "christoffel" || tensor.key == "riemann" {
@@ -443,6 +480,41 @@ struct TensorComponentsView: View {
             .padding(28)
         }
         .searchable(text: $search, prompt: "Coordinates, indices, or expression")
+    }
+}
+
+private func tensorCopyButton(_ tensor: TensorResult, coordinates: [String]) -> some View {
+    CopyLatexButton(resultKey: tensor.key,
+                    help: "Copy all stored components with their indices as a LaTeX aligned block. Search does not limit the copied results.") {
+        tensor.latexBlock(coordinates: coordinates)
+    }
+}
+
+private struct CopyLatexButton: View {
+    let resultKey: String
+    let help: String
+    let latex: () -> String
+    @State private var copied = false
+
+    var body: some View {
+        Button {
+            copyToClipboard(latex())
+            copied = true
+        } label: {
+            Label(copied ? "Copied" : "Copy LaTeX", systemImage: copied ? "checkmark" : "doc.on.doc")
+        }
+        .buttonStyle(.bordered)
+        .fixedSize()
+        .help(help)
+        .accessibilityLabel("Copy " + (CalculationOutput(rawValue: resultKey)?.title ?? resultKey) + " as LaTeX")
+        .accessibilityIdentifier("copy-latex-" + resultKey)
+        .onChange(of: resultKey) { _, _ in copied = false }
+        .task(id: copied) {
+            guard copied else { return }
+            do { try await Task.sleep(nanoseconds: 2_000_000_000) }
+            catch { return }
+            copied = false
+        }
     }
 }
 

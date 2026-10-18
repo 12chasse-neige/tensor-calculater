@@ -80,7 +80,7 @@ struct MetricEditor: NSViewRepresentable {
             storage.beginEditing()
             storage.addAttributes([.foregroundColor: NSColor.textColor, .font: NSFont.monospacedSystemFont(ofSize: 14, weight: .regular)], range: range)
             let patterns: [(String, NSColor)] = [
-                ("\\b(?:sin|cos|tan|asin|acos|atan|sinh|cosh|tanh|exp|log|sqrt|abs)\\b", .systemPurple),
+                ("(?i)\\b(?:sin|cos|tan|cot|sec|csc|asin|acos|atan|arcsin|arccos|arctan|sinh|cosh|tanh|exp|log|ln|sqrt|abs)\\b", .systemPurple),
                 ("\\b[0-9]+(?:\\.[0-9]+)?\\b", .systemBlue),
                 ("[\\[\\](),]", .secondaryLabelColor)
             ]

@@ -12,12 +12,12 @@ The native app contains only the tensor calculation workflow. Its runtime
 does not require Python, Homebrew, a terminal, or an internet connection.
 The obsolete Python application has been removed. Python scripts under `scripts/` and `tests/` are development tools only.
 
-## Download version 0.1.0
+## Download version 0.2.0
 
-Download the Apple Silicon app from the [v0.1.0 release](https://github.com/12chasse-neige/tensor-calculater/releases/tag/v0.1.0).
+Download the Apple Silicon app from the [v0.2.0 release](https://github.com/12chasse-neige/tensor-calculater/releases/tag/v0.2.0).
 Extract the ZIP and move **Tensor Calculator.app** to Applications. The binary
 requires macOS 15 or later and is signed ad hoc; it has not been notarized by
-Apple. The release includes SHA-256 checksums and [release notes](docs/releases/v0.1.0.md).
+Apple. The release includes SHA-256 checksums and [release notes](docs/releases/v0.2.0.md).
 
 ## Build and run
 
@@ -67,6 +67,14 @@ Results can be searched and copied as expressions or LaTeX. Save/open
 inputs that produced the saved results; editing inputs marks those results as
 belonging to the previous calculation.
 
+Use **Copy LaTeX** on a tensor's overview card or component page to copy all its
+stored nonzero components together, with coordinate labels and upper/lower index
+positions, in a display-math `aligned` block (requires `amsmath`). The copy always
+includes the full tensor result, regardless of the search filter, and retains
+components whose zero value is unresolved. A vanishing tensor copies an indexed
+zero equation. Scalar cards have the same button for their complete equation;
+the existing per-component Copy menus remain available.
+
 ### Input grammar
 
 - ASCII symbol names; explicitly declare constants and unknown functions.
@@ -76,7 +84,12 @@ belonging to the previous calculation.
   as `2M` and `2(r+1)`.
 - `sin`, `cos`, `tan`, `cot`, `sec`, `csc`, `asin`, `acos`, `atan`, `sinh`,
   `cosh`, `tanh`, `exp`, `sqrt`, `log`/`ln`, `Abs`/`abs`, and constants `pi`,
-  `E`, `I`.
+  `e`/`E`, `I`. Elementary functions need no declaration and accept capitalized
+  names such as `Sin(x)` and `COS(x)`. Inverse trigonometric functions also accept
+  `arcsin`, `arccos`, and `arctan`. Use parentheses around arguments.
+- `e^x`, `E^x`, and `exp(x)` all represent the exponential function. An explicitly
+  declared coordinate or constant named `e` keeps its declared meaning.
+  Function powers such as `sin^2(x)` mean `sin(x)^2` (including reciprocal powers).
 - Unknown functions declared as `a(t)` or `Phi(t,r)`. Function calls respect
   their declared coordinate dependencies and preserve symbolic derivatives.
 - `diff(expression, coordinate[, order])`, mixed derivatives such as
@@ -179,7 +192,8 @@ L^{2} & 0 \\
 
 Supported input includes fractions (`\frac{a}{b}`), square roots (`\sqrt{a}`),
 Greek symbol names, explicit function arguments (`\sin{\theta}` or
-`\sin(\theta)`), powers, and `\cdot` / `\times`. Unsupported commands produce
+`\sin(\theta)`), powers, `\mathrm{e}`, `\operatorname{exp}`, and `\cdot` / `\times`.
+The same conversion applies inside `diag(...)`. Unsupported commands produce
 an input error. This is a mathematical subset of LaTeX, not a TeX interpreter.
 
 The metric buttons show **(− + + +)** and **(+ − − −)** for four-dimensional

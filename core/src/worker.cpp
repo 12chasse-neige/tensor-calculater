@@ -10,7 +10,7 @@ void emit(tensor::JSON event) { std::cout << event.dump() << '\n' << std::flush;
 
 int main(int argc, char** argv) {
     if (argc > 1 && std::string(argv[1]) == "--version") {
-        std::cout << "TensorCore 0.1.0 / SymEngine 0.14.0 / protocol 1\n"; return 0;
+        std::cout << "TensorCore 0.2.0 / SymEngine 0.14.0 / protocol 1\n"; return 0;
     }
     std::signal(SIGTERM,cancelled); std::signal(SIGINT,cancelled);
     std::string line;

@@ -38,6 +38,8 @@ final class NativeIntegrationTests: XCTestCase {
             try await snapshot(document: document, to: directory.appendingPathComponent("flat-editor-dark.png"), colorScheme: .dark)
             try await snapshotContent(CalculationView(document: .constant(document)), to: directory.appendingPathComponent("flat-editor-small.png"),
                                       size: CGSize(width: 900, height: 680), expectedLabels: 5)
+            try await snapshotContent(CalculationView(document: .constant(document)), to: directory.appendingPathComponent("flat-editor-wide.png"),
+                                      colorScheme: .dark, size: CGSize(width: 1920, height: 1080), expectedLabels: 5)
             document.inputs.riemannSign = -1
             document.inputs.metricSign = -1
             try await snapshot(document: document, to: directory.appendingPathComponent("opposite-conventions.png"))
@@ -48,11 +50,20 @@ final class NativeIntegrationTests: XCTestCase {
             document.resultInputs = inputs
             try await snapshot(document: document, to: directory.appendingPathComponent("sphere-results.png"))
             try await snapshot(document: document, to: directory.appendingPathComponent("sphere-results-dark.png"), colorScheme: .dark)
-            for key in ["christoffel", "riemann"] {
+            try await snapshotContent(CalculationView(document: .constant(document)), to: directory.appendingPathComponent("sphere-results-small.png"),
+                                      size: CGSize(width: 900, height: 680))
+            for key in ["inverse_metric", "christoffel", "riemann", "ricci"] {
                 let tensor = try XCTUnwrap(result.tensors.first(where: { $0.key == key }))
                 try await snapshotContent(TensorComponentsView(tensor: tensor, coordinates: result.coordinates, search: .constant("")),
                                           to: directory.appendingPathComponent(key + "-indices.png"), colorScheme: .dark)
+                try await snapshotContent(TensorComponentsView(tensor: tensor, coordinates: result.coordinates, search: .constant("no matches")),
+                                          to: directory.appendingPathComponent(key + "-filtered.png"), size: CGSize(width: 600, height: 680))
             }
+            let latexBlocks = result.tensors.map { "\\subsection*{" + $0.name + "}\n" + $0.latexBlock(coordinates: result.coordinates) }
+                + result.scalars.map { "\\subsection*{" + $0.name + "}\n" + $0.latexBlock }
+            let latexDocument = "\\documentclass{article}\n\\usepackage{amsmath}\n\\begin{document}\n"
+                + latexBlocks.joined(separator: "\n") + "\n\\end{document}\n"
+            try latexDocument.write(to: directory.appendingPathComponent("sphere-results.tex"), atomically: true, encoding: .utf8)
             let longExpression = String(repeating: "r^2 + ", count: 30_000)
             document.result = CalculationResult(coordinates: result.coordinates, elapsed_seconds: result.elapsed_seconds,
                 convention: result.convention, tensors: [],
@@ -107,6 +118,68 @@ final class NativeIntegrationTests: XCTestCase {
         var document = CalculationDocument()
         document.inputs = inputs
         XCTAssertEqual(try CalculationDocument(data: document.encodedData()).inputs, inputs)
+    }
+
+    func testElementaryFunctionsComputeThroughPlainLatexAndConvertedInput() async throws {
+        guard let worker = ProcessInfo.processInfo.environment["TENSOR_INTEGRATION_WORKER_PATH"] else { throw XCTSkip("Set integration worker path") }
+        let previous = ProcessInfo.processInfo.environment["TENSOR_WORKER_PATH"]
+        setenv("TENSOR_WORKER_PATH", worker, 1)
+        defer {
+            if let previous { setenv("TENSOR_WORKER_PATH", previous, 1) }
+            else { unsetenv("TENSOR_WORKER_PATH") }
+        }
+        let plain = "[e^(2*x)*(sin(x)^2+cos(x)^2)]"
+        let metrics = [
+            plain, try MetricNotation.latex(plain),
+            "[E^(2*x)*(Sin^2(x)+COS**2(x))]",
+            #"\begin{pmatrix}\mathrm{e}^{2*x}*(\sin^{2}{x}+\cos^{2}(x))\end{pmatrix}"#,
+            #"diag(\exp{2*x}*(\sin^2{x}+\cos^2{x}))"#,
+            #"[\operatorname{exp}(2*x)*(\sin(x)^2+\cos(x)^2)]"#
+        ]
+        for metric in metrics {
+            let inputs = CalculationInputs(coordinates: "x", metric: metric, outputs: ["inverse_metric", "christoffel"])
+            XCTAssertNil(inputs.validationMessage, metric)
+            let model = CalculationModel()
+            model.calculate(inputs)
+            try await waitUntil { !model.isRunning }
+            XCTAssertNil(model.errorMessage, metric)
+            let result = try XCTUnwrap(model.result, metric)
+            XCTAssertEqual(result.tensors.first(where: { $0.key == "inverse_metric" })?.components.first?.expression, "exp(-2*x)", metric)
+            XCTAssertEqual(result.tensors.first(where: { $0.key == "christoffel" })?.components.first?.expression, "1", metric)
+        }
+        XCTAssertThrowsError(try MetricNotation.rows(#"diag(\unknown{x})"#))
+        XCTAssertThrowsError(try MetricNotation.expression(#"\operatorname{x+y}(x)"#))
+    }
+
+    func testMetricWorkspaceExpandsWithWindowAndStacksOnSmallDisplays() async throws {
+        var editorWidths: [CGFloat] = []
+        for size in [CGSize(width: 900, height: 680), CGSize(width: 1920, height: 1080)] {
+            let view = NSHostingView(rootView: CalculationView(document: .constant(CalculationDocument())))
+            let bounds = NSRect(origin: .zero, size: size)
+            let window = NSWindow(contentRect: bounds, styleMask: [.borderless], backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            window.contentView = view
+            view.frame = bounds
+            defer { window.close() }
+            try await Task.sleep(nanoseconds: 150_000_000)
+            view.layoutSubtreeIfNeeded()
+            let editor = try XCTUnwrap(descendants(in: view).compactMap { $0 as? NSTextView }.first(where: { $0.accessibilityLabel() == "Metric matrix" }))
+            let editorScroll = try XCTUnwrap(editor.enclosingScrollView)
+            let editorFrame = editorScroll.convert(editorScroll.bounds, to: view)
+            editorWidths.append(editorFrame.width)
+            let preview = try XCTUnwrap(mathLabels(in: view).first(where: { $0.mathLabel.latex.hasPrefix("g_{ij} = ") }))
+            let previewScroll = try XCTUnwrap(preview.enclosingScrollView)
+            let previewFrame = previewScroll.convert(previewScroll.bounds, to: view)
+            XCTAssertLessThanOrEqual(previewFrame.maxX, bounds.maxX - 24)
+            if size.width == 900 {
+                XCTAssertGreaterThan(previewFrame.minY, editorFrame.maxY, "Stack the preview below the editor in a narrow window.")
+            } else {
+                XCTAssertGreaterThan(previewFrame.minX, editorFrame.maxX, "Place the preview beside the editor on a wide display.")
+                XCTAssertGreaterThan(previewFrame.width, 600, "Use the display width for the metric preview.")
+                XCTAssertGreaterThan(previewFrame.maxX, bounds.maxX - 70, "The form should reach the window's trailing padding.")
+            }
+        }
+        XCTAssertGreaterThan(editorWidths[1], editorWidths[0] + 150, "The editor should grow when the window expands.")
     }
 
     func testLargeFormulaPolicyBoundsAutomaticParsingAndUnicodePreview() {
@@ -187,7 +260,7 @@ final class NativeIntegrationTests: XCTestCase {
             XCTAssertNil(label.error, formula)
             XCTAssertGreaterThan(label.fittingSize.height, 0)
         }
-        XCTAssertEqual(TensorNotation.indexed("T", labels: ["a", "b", "c"], variance: "lul"), #"T_{a}{}^{b}{}_{c}"#)
+        XCTAssertEqual(TensorNotation.indexed("T", labels: ["a", "b", "c"], variance: "lul"), #"T_{a} {}^{b} {}_{c}"#)
         let tensor = TensorResult(key: "riemann", name: "Riemann", symbol: "R", variance: "ulll", rank: 4, shape: [4,4,4,4], components: [])
         let component = TensorComponent(indices: [0,1,2,3], expression: "1", latex: "1", zero_status: "nonzero")
         XCTAssertEqual(tensor.label(for: component, coordinates: ["mu", "nu", "rho", "sigma"]), TensorNotation.riemann)
@@ -282,7 +355,7 @@ final class NativeIntegrationTests: XCTestCase {
     func testLabelsPreserveIndexPositionsAndGreekCoordinates() {
         let tensor = TensorResult(key: "christoffel", name: "Christoffel", symbol: "\\Gamma", variance: "ull", rank: 3, shape: [3,3,3], components: [])
         let component = TensorComponent(indices: [1,2,2], expression: "-r", latex: "-r", zero_status: "unknown")
-        XCTAssertEqual(tensor.label(for: component, coordinates: ["t", "r", "theta"]), "\\Gamma^{r}{}_{\\theta\\,\\theta}")
+        XCTAssertEqual(tensor.label(for: component, coordinates: ["t", "r", "theta"]), "\\Gamma^{r} {}_{\\theta \\theta}")
     }
 
     private var sampleResult: CalculationResult {
@@ -351,6 +424,10 @@ final class NativeIntegrationTests: XCTestCase {
     private func mathLabels(in view: NSView) -> [NativeMathCanvas] {
         let own = (view as? NativeMathCanvas).map { [$0] } ?? []
         return own + view.subviews.flatMap { mathLabels(in: $0) }
+    }
+
+    private func descendants(in view: NSView) -> [NSView] {
+        view.subviews.flatMap { [$0] + descendants(in: $0) }
     }
 
     private func withWorker(body: String, run: (URL, URL) async throws -> Void) async throws {

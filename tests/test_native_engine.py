@@ -396,6 +396,45 @@ class NativeEngineTests(unittest.TestCase):
         for indices, expected in gamma.items():
             self.assertEquivalent(value(actual_gamma,*indices), expected, str(indices))
 
+    def test_elementary_functions_need_no_declarations_and_differentiate(self):
+        x = sp.Symbol("x")
+        expressions = {
+            "sin(x)": sp.sin(x), "cos(x)": sp.cos(x),
+            "sin^2(x)": sp.sin(x)**2, "cos**2(x)": sp.cos(x)**2,
+            "sin^(-2)(x)": sp.sin(x)**-2,
+            "e^x": sp.exp(x), "E**x": sp.exp(x), "exp(x)": sp.exp(x),
+            "e^(sin(x))*cos(x)": sp.exp(sp.sin(x))*sp.cos(x),
+            "Sin(x)": sp.sin(x), "COS(x)": sp.cos(x),
+            "arcsin(x)": sp.asin(x), "arccos(x)": sp.acos(x), "arctan(x)": sp.atan(x),
+            "sinh(x)": sp.sinh(x), "cosh(x)": sp.cosh(x), "tanh(x)": sp.tanh(x),
+            "sqrt(x)": sp.sqrt(x), "ln(x)": sp.log(x), "log(x)": sp.log(x),
+        }
+        for source, expected in expressions.items():
+            with self.subTest(expression=source):
+                req = request("x", f"[{source}]", outputs=["inverse_metric", "christoffel"])
+                result = calculate(req)
+                self.assertEquivalent(value(tensor(result, "inverse_metric", req), 0, 0), 1/expected)
+                self.assertEquivalent(value(tensor(result, "christoffel", req), 0, 0, 0), sp.diff(expected, x)/(2*expected))
+
+    def test_explicit_symbols_and_unknown_functions_remain_case_sensitive(self):
+        req = request("x", "[e*Sin(x)]", scalars="e", functions="Sin(x)", outputs=["inverse_metric", "christoffel"])
+        result = calculate(req)
+        x, e = sp.symbols("x e")
+        f = sp.Function("Sin")(x)
+        self.assertEquivalent(value(tensor(result, "inverse_metric", req), 0, 0), 1/(e*f))
+        self.assertEquivalent(value(tensor(result, "christoffel", req), 0, 0, 0), sp.diff(f,x)/(2*f))
+        req = request("x", "[e(x)]", functions="e(x)", outputs=["inverse_metric"])
+        self.assertEquivalent(value(tensor(calculate(req), "inverse_metric", req), 0, 0), 1/sp.Function("e")(x))
+
+    def test_builtin_errors_do_not_ask_for_function_declarations(self):
+        for expression in ["sin x", "cos", "sin^2", "sin(x,x)", "sin^1001(x)"]:
+            with self.subTest(expression=expression):
+                req = request("x", f"[{expression}]", outputs=["inverse_metric"])
+                events = run_lines([json.dumps(req)])
+                errors = [event for event in events if event["type"] == "error"]
+                self.assertEqual(len(errors), 1, events)
+                self.assertNotIn("declare", errors[0]["message"].lower())
+
     def test_nonzero_curvature_at_old_zero_samples_is_retained(self):
         x = sp.Symbol("x")
         sampled_roots = [sp.Rational(2,3),sp.Rational(5,7),sp.Rational(11,13),sp.Rational(17,19)]

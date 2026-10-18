@@ -238,8 +238,8 @@ def bundle(args: argparse.Namespace) -> Path:
             "CFBundleExecutable": "TensorCalculator",
             "CFBundleIconFile": "AppIcon.icns",
             "CFBundlePackageType": "APPL",
-            "CFBundleShortVersionString": "0.1.0",
-            "CFBundleVersion": "1",
+            "CFBundleShortVersionString": "0.2.0",
+            "CFBundleVersion": "2",
             "LSMinimumSystemVersion": minimum_os,
             "LSApplicationCategoryType": "public.app-category.education",
             "NSHighResolutionCapable": True,
@@ -265,7 +265,7 @@ def bundle(args: argparse.Namespace) -> Path:
         (contents / "PkgInfo").write_bytes(b"APPL????")
         copy_licenses(project_root, build_dir, args.gmp_prefix.resolve(), resources / "Licenses")
         build_info = {
-            "version": "0.1.0",
+            "version": "0.2.0",
             "architectures": sorted(gui_architectures),
             "minimum_macos_version": minimum_os,
             "built_at_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),

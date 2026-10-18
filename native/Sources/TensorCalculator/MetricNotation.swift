@@ -27,7 +27,7 @@ enum MetricNotation {
             throw InputError(message: "Unclosed LaTeX argument.")
         }
         let symbols = Set("alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi pi rho sigma tau upsilon phi chi psi omega".split(separator: " ").map(String.init))
-        let functions = Set("sin cos tan cot sec csc sinh cosh tanh exp log ln asin acos atan".split(separator: " ").map(String.init))
+        let functions = Set("sin cos tan cot sec csc sinh cosh tanh exp log ln asin acos atan arcsin arccos arctan abs Abs".split(separator: " ").map(String.init))
         while i < chars.count {
             let c = chars[i]
             if c == "{" { result += "(" + (try group()) + ")"; continue }
@@ -44,6 +44,13 @@ enum MetricNotation {
                 let numerator = try group(), denominator = try group()
                 result += "((" + numerator + ")/(" + denominator + "))"
             } else if command == "sqrt" { result += "sqrt(" + (try group()) + ")" }
+            else if command == "mathrm" || command == "operatorname" {
+                let name = try group().trimmingCharacters(in: .whitespacesAndNewlines)
+                guard name.range(of: #"^[A-Za-z_][A-Za-z_0-9]*$"#, options: .regularExpression) != nil else {
+                    throw InputError(message: "Use a single symbol or function name inside \\" + command + ".")
+                }
+                result += " " + name + " "
+            }
             else if command == "left" || command == "right" { continue }
             else if command == "cdot" || command == "times" { result += "*" }
             else if symbols.contains(command) { result += " " + command + " " }
@@ -97,7 +104,7 @@ enum MetricNotation {
             throw InputError(message: "Use a complete matrix, pmatrix, or bmatrix environment.")
         }
         if text.hasPrefix("diag("), text.hasSuffix(")") {
-            let entries = split(String(text.dropFirst(5).dropLast()))
+            let entries = try split(String(text.dropFirst(5).dropLast())).map { try expression($0) }
             return entries.indices.map { row in entries.indices.map { row == $0 ? entries[row] : "0" } }
         }
         if text.hasPrefix("Matrix(") && text.hasSuffix(")") { text = String(text.dropFirst(7).dropLast()) }
